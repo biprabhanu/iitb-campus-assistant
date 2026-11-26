@@ -77,14 +77,15 @@ function MoodleBadge({ state, onClick }: { state: StatusState; onClick: () => vo
   let short = "Off"; // compact label for small screens
   let tip = "Connect Moodle in Settings to see your real deadlines.";
   let cls = "text-muted-foreground";
-  if (status && status.moodle === "connected") {
-    if (status.moodle_mode === "demo") {
-      Icon = FlaskConical;
-      label = "Moodle demo";
-      short = "Demo";
-      tip = "Showing sample Moodle data, not yours. Connect Moodle in Settings for real deadlines.";
-      cls = "text-warning";
-    } else {
+  if (status?.moodle_mode === "demo") {
+    // Demo fixtures are served when nothing is connected (backend: moodle="not_configured").
+    Icon = FlaskConical;
+    label = "Moodle demo";
+    short = "Demo";
+    tip = "Showing sample Moodle data, not yours. Connect Moodle in Settings for real deadlines.";
+    cls = "text-warning";
+  } else if (status && status.moodle === "connected") {
+    {
       Icon = UserCheck;
       label = "Moodle connected";
       short = "Moodle";

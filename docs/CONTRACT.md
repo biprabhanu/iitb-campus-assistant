@@ -144,10 +144,12 @@ with `mode=fallback` and `ALLOW_PERSONAL_DATA_TO_CLOUD=false`, Moodle tools are 
 
 ## 6. Answer kinds (backend decides, UI draws)
 
-- `clarify`: the model called `ask_clarification`. The backend streams the question as tokens and sets
+- `clarify`: a focused pre-check call (`agent/clarify.py`, JSON-only, setting `CLARIFY_PRECHECK`)
+  decided the question needs one clarifying question, or the model called `ask_clarification`. The backend streams the question as tokens and sets
   `follow_up`. No other tools run after it.
 - `abstain`: the final answer starts with the literal `ABSTAIN:` (the system prompt asks for it when
-  evidence is missing). The backend strips the prefix before streaming, sets `answer_kind="abstain"`,
+  evidence is missing). The backend replaces the model's wording with one fixed sentence
+  ("I couldn't verify this in my sources, so I won't guess. …"), sets `answer_kind="abstain"`,
   and fills `office_links` from `get_official_link` (it calls it itself if the model didn't).
 - `answer`: everything else.
 

@@ -10,7 +10,7 @@ import { SourcesRow } from "@/components/sources-row";
 import { StepsTimeline } from "@/components/steps-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn, prepareCitations } from "@/lib/utils";
-import type { ChatMessage } from "@/lib/types";
+import type { ChatMessage, SourceItem } from "@/lib/types";
 
 /** The student's message: a right-aligned bubble. */
 export function UserMessage({ message }: { message: ChatMessage }) {
@@ -19,6 +19,15 @@ export function UserMessage({ message }: { message: ChatMessage }) {
       <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-muted px-4 py-2.5 text-[15px]">{message.content}</p>
     </div>
   );
+}
+
+/** Cited sources first (in the order they were cited), then the rest in their original order. */
+function citedFirst(items: SourceItem[], citations: string[]): SourceItem[] {
+  const rank = (s: SourceItem) => {
+    const i = citations.indexOf(s.id);
+    return i === -1 ? citations.length : i;
+  };
+  return [...items].sort((a, b) => rank(a) - rank(b)); // stable sort keeps the original order
 }
 
 /** Grey placeholder lines shown until the first word of the answer arrives. */
@@ -47,10 +56,14 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
   const { content, sources = [], steps = [], done, error } = message;
   const citations = done?.citations ?? []; // only validated ids ever become chips
   const deadlines = sources.filter((s) => s.kind === "moodle" && s.due_at);
-  const docSources = sources.filter((s) => !(s.kind === "moodle" && s.due_at));
   const kind = done?.answer_kind ?? "answer";
+  // Document cards: hidden when the answer abstained (nothing searched was usable),
+  // otherwise the cited ones come first, in citation order.
+  const docSources =
+    kind === "abstain" ? [] : citedFirst(sources.filter((s) => !(s.kind === "moodle" && s.due_at)), citations);
+  const officeUrls = (done?.office_links ?? []).map((l) => l.url);
   const waitingForText = streaming && !content;
-  const text = <Markdown text={content} citations={citations} sources={sources} />;
+  const text = <Markdown text={content} citations={citations} sources={sources} extraUrls={officeUrls} />;
 
   let body: React.ReactNode = null;
   if (kind === "clarify" && done?.follow_up) {

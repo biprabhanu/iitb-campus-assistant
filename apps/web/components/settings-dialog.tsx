@@ -75,13 +75,13 @@ export function SettingsDialog({
 
   const moodleLabel = !status
     ? "Unknown"
-    : status.moodle === "connected"
-      ? status.moodle_mode === "demo"
-        ? "Demo data"
-        : `Connected (${status.moodle_mode === "ical" ? "calendar link" : "token"})`
-      : status.moodle === "error"
-        ? "Error"
-        : "Not connected";
+    : status.moodle_mode === "demo"
+      ? "Not connected (showing demo data)"
+      : status.moodle === "connected"
+        ? `Connected (${status.moodle_mode === "ical" ? "calendar link" : "token"})`
+        : status.moodle === "error"
+          ? "Error"
+          : "Not connected";
   const realConnection = status?.moodle === "connected" && status.moodle_mode !== "demo";
 
   return (

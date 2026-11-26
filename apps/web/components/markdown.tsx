@@ -1,6 +1,8 @@
 "use client";
 // Renders the model's answer as markdown. Safety: no raw HTML is ever rendered
-// (we do not use rehype-raw), and links open in a new tab with noopener.
+// (we do not use rehype-raw), and a link is clickable ONLY if its URL is one we gave the
+// model (a source, a Moodle activity or an office link). Any other URL the model writes is
+// shown as plain text, so a made-up or malicious link can never be clicked.
 import { Children, isValidElement, memo, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -38,10 +40,20 @@ interface MarkdownProps {
   /** Validated citation ids (done.citations). Empty while streaming, so no chips show yet. */
   citations: string[];
   sources: SourceItem[];
+  /** More URLs that may be linked, e.g. the office links of an abstention. */
+  extraUrls?: string[];
 }
 
-function MarkdownImpl({ text, citations, sources }: MarkdownProps) {
+/** Compare URLs loosely: ignore a trailing slash and the #fragment. */
+function normalizeUrl(url: string): string {
+  return url.split("#")[0].replace(/\/+$/, "");
+}
+
+function MarkdownImpl({ text, citations, sources, extraUrls = [] }: MarkdownProps) {
   const prepared = prepareCitations(text, citations);
+  const allowed = new Set(
+    [...sources.flatMap((s) => [s.url, s.activity_url ?? ""]), ...extraUrls].filter(Boolean).map(normalizeUrl),
+  );
   return (
     <div className="prose-answer break-words">
       <ReactMarkdown
@@ -53,6 +65,9 @@ function MarkdownImpl({ text, citations, sources }: MarkdownProps) {
               const source = sources.find((s) => s.id === href.slice(5));
               if (!source) return null;
               return <CitationChip number={textOf(children)} source={source} />;
+            }
+            if (!href || !allowed.has(normalizeUrl(href))) {
+              return <span className="font-medium">{children}</span>; // not a URL we provided
             }
             return (
               <a href={href} target="_blank" rel="noopener noreferrer">

@@ -63,6 +63,8 @@ class Settings(BaseSettings):
     tool_timeout_s: float = 15.0
     max_tool_calls: int = 4
     max_history_turns: int = 20
+    # One short extra model call that decides "ask a clarifying question?" (agent/clarify.py).
+    clarify_precheck: bool = True
 
     @field_validator(
         "campuspilot_db_path", "campuspilot_raw_dir", "campuspilot_registry_csv", mode="after"

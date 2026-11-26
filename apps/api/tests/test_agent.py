@@ -5,8 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from campuspilot.agent.citations import CitationFilter, strip_invalid
-from campuspilot.agent.orchestrator import RunTrace, run_chat
+from campuspilot.agent.orchestrator import ABSTAIN_TEXT, RunTrace, run_chat
 from campuspilot.agent.prompts import SYSTEM_PROMPT_VERSION, build_system_prompt
+from campuspilot.config import get_settings
 from campuspilot.llm.base import LLMReply, ModelOffline, ModelTimeout
 from campuspilot.llm.mock import MockLLM
 from campuspilot.schemas.chat import ChatRequest, ChatTurn
@@ -268,15 +269,17 @@ async def test_clarify_streams_question_and_sets_follow_up(monkeypatch) -> None:
     assert fakes.search == [] and llm.stream_calls == 0
 
 
-async def test_abstain_strips_prefix_and_fills_office_links(monkeypatch) -> None:
+async def test_abstain_uses_fixed_text_and_fills_office_links(monkeypatch) -> None:
     fakes = install_fake_tools(monkeypatch, hits=[])
     llm = ScriptedLLM(
         [LLMReply(tool_calls=[call("search_campus_docs", query="x")]), LLMReply(content="")],
-        stream_pieces=["ABS", "TAIN: Not found. ", "Ask the office."],
+        stream_pieces=["ABS", "TAIN: Not found. ", "Try the Mess-o-matic app [S9]."],
     )
     events, _ = await run(llm, "mess menu for 2031")
     done = done_of(events)
-    assert answer_text(events) == "Not found. Ask the office."
+    # The model's own wording (which may name invented portals) is replaced by a fixed text.
+    assert answer_text(events) == ABSTAIN_TEXT
+    assert "Mess-o-matic" not in answer_text(events)
     assert done["answer_kind"] == "abstain"
     assert done["office_links"][0]["url"] == "https://www.iitb.ac.in/hostel"
     assert len(fakes.link) == 1  # the backend looked the office up itself
@@ -395,3 +398,40 @@ async def test_answer_after_tools_is_a_real_stream_without_tools(monkeypatch) ->
     assert llm.stream_calls == 1 and len(llm.chat_calls) == 2  # 1 routing + 1 stream
     assert answer_text(events) == "Classes begin [S1]."
     assert llm.chat_calls[-1][1] is None  # no tools offered for the final answer
+
+
+# ---------- clarification precheck ----------
+
+
+async def test_precheck_asks_before_any_tool(monkeypatch) -> None:
+    monkeypatch.setenv("CLARIFY_PRECHECK", "true")
+    get_settings.cache_clear()
+    fakes = install_fake_tools(monkeypatch)
+    verdict = (
+        '{"clarify": true, "question": "Which programme are you in?", '
+        '"options": ["UG", "PG", "PhD"]}'
+    )
+    llm = ScriptedLLM([LLMReply(content=verdict)])
+    events, trace = await run(llm, "Can I change my room?")
+    done = done_of(events)
+    assert done["answer_kind"] == "clarify"
+    assert done["follow_up"]["options"] == ["UG", "PG", "PhD"]
+    assert answer_text(events) == "Which programme are you in?"
+    assert fakes.search == [] and len(llm.chat_calls) == 1  # nothing else ran
+
+
+async def test_precheck_no_or_garbage_carries_on_normally(monkeypatch) -> None:
+    monkeypatch.setenv("CLARIFY_PRECHECK", "true")
+    get_settings.cache_clear()
+    install_fake_tools(monkeypatch)
+    for verdict in ('{"clarify": false, "question": "", "options": []}', "not json at all"):
+        llm = ScriptedLLM(
+            [
+                LLMReply(content=verdict),
+                LLMReply(tool_calls=[call("search_campus_docs", query="x")]),
+            ],
+            stream_pieces=["Classes begin [S1]."],
+        )
+        events, _ = await run(llm, "Where can I find the academic calendar?")
+        assert done_of(events)["answer_kind"] == "answer"
+        assert answer_text(events) == "Classes begin [S1]."

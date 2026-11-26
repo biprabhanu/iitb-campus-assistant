@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from campuspilot.agent.citations import CitationFilter
+from campuspilot.agent.clarify import needs_clarification
 from campuspilot.agent.prompts import build_system_prompt
 from campuspilot.config import Settings, get_settings
 from campuspilot.llm.base import (
@@ -93,8 +94,19 @@ def chunk_text(text: str, size: int = 20) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)]
 
 
+ABSTAIN_TEXT = (
+    "I couldn't verify this in my sources, so I won't guess. "
+    "Please check with the office or portal linked below."
+)
+
+
 class AbstainFilter:
-    """Detects and removes a leading 'ABSTAIN:' from streamed text."""
+    """Detects a leading 'ABSTAIN:' in streamed text.
+
+    When the model abstains, everything it wrote after the prefix is replaced by one fixed,
+    honest sentence. Free-text abstentions tended to name portals that are in no source
+    (e.g. invented mess-app names); the real pointers come from `office_links` instead.
+    """
 
     PREFIX = "ABSTAIN:"
 
@@ -105,7 +117,7 @@ class AbstainFilter:
 
     def feed(self, text: str) -> str:
         if self._decided:
-            return text
+            return "" if self.abstained else text
         self._buf += text
         head = self._buf.lstrip()
         if len(head) < len(self.PREFIX) and self.PREFIX.startswith(head):
@@ -114,13 +126,15 @@ class AbstainFilter:
         buf, self._buf = self._buf, ""
         if head.startswith(self.PREFIX):
             self.abstained = True
-            return head[len(self.PREFIX) :].lstrip()
+            return ABSTAIN_TEXT
         return buf
 
     def flush(self) -> str:
         buf, self._buf = self._buf, ""
+        if not self._decided and buf.strip() == self.PREFIX.rstrip(":"):
+            buf = ""
         self._decided = True
-        return buf
+        return "" if self.abstained else buf
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -286,6 +300,17 @@ async def _run(
     executed = 0
     final_reply: LLMReply | None = None
     follow_up: FollowUp | None = None
+
+    # Step 0: a focused yes/no check for "needs a clarifying question" (see agent/clarify.py).
+    if settings.clarify_precheck and llm.mode != "mock" and not _is_small_talk(request.message):
+        follow_up = await needs_clarification(llm, request.message, history)
+        if follow_up is not None:
+            trace.tools.append("ask_clarification")
+            for state in ("start", "done"):
+                event = ToolEvent(
+                    name="ask_clarification", label="Asking a clarifying question", state=state
+                )
+                yield "tool", event.model_dump()
 
     while executed < settings.max_tool_calls and follow_up is None:
         reply = await llm.chat(messages, schemas)

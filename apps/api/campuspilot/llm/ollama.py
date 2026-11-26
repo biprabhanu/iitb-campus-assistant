@@ -65,7 +65,10 @@ class OllamaClient:
             "messages": messages,
             "stream": stream,
             "think": False,
-            "options": {"temperature": 0.2},
+            # Routing (non-streaming, with tools) is deterministic, so the same question always
+            # takes the same path (e.g. always asks to clarify). Answers get a little variety.
+            # Sampling options don't force a model reload; num_ctx would, so we never send it.
+            "options": {"temperature": 0.2 if stream else 0.0},
         }
 
     async def chat(self, messages: list[Message], tools: list[dict[str, Any]] | None) -> LLMReply:
