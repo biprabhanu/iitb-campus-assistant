@@ -1,0 +1,11 @@
+From: Academic Office (demo) <acad-office@example.org>
+To: student@example.org
+Subject: Reminder: last date for course drop is {DN+4}
+Message-ID: <demo-deadline-1@example.org>
+Date: {NOW-20h}
+Content-Type: text/plain; charset=utf-8
+
+Dear students,
+
+This is a reminder that the last date to drop a course without a W grade is {DN+4}.
+Late requests will not be considered.

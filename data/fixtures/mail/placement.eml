@@ -1,0 +1,9 @@
+From: Placement Cell (demo) <placement-cell@example.org>
+To: student@example.org
+Subject: Company pre-placement talk tomorrow 4 PM at SOM
+Message-ID: <demo-placement-1@example.org>
+Date: {NOW-2h}
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Dear students,</p><p>An imaginary company will hold a pre-placement talk
+<b>tomorrow</b> at <b>4 PM</b>. Venue: SOM, Room 101.</p></body></html>
