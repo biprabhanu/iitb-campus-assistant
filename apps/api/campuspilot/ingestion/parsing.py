@@ -7,7 +7,6 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import quote, urldefrag, urljoin, urlparse
 
-import pymupdf
 from bs4 import BeautifulSoup, Tag
 
 from campuspilot.ingestion.dates import extract_published_at
@@ -133,7 +132,13 @@ def parse_html(html: bytes | str, url: str = "") -> ParsedDoc:
 
 
 def parse_pdf(data: bytes, fallback_title: str = "") -> ParsedDoc:
-    """One section per page (PyMuPDF). Pages with no text are skipped."""
+    """One section per page (PyMuPDF). Pages with no text are skipped.
+
+    PyMuPDF is the optional `pdf` extra (large: it pulls onnxruntime and numpy), so it is
+    imported here. The hosted API never parses PDFs: its index is downloaded pre-built.
+    """
+    import pymupdf  # optional dependency, see pyproject [pdf]
+
     sections: list[Section] = []
     with pymupdf.open(stream=data, filetype="pdf") as pdf:
         meta_title = _clean((pdf.metadata or {}).get("title") or "")

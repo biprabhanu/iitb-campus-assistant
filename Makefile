@@ -8,7 +8,8 @@ API_PORT ?= 8000
 WEB_PORT ?= 3000
 
 .PHONY: help setup setup-api setup-web dev api web mock-dev test test-api test-web lint fmt \
-        ingest ingest-dry reindex moodle-check acceptance screenshots e2e secrets-check tunnel-check
+        ingest ingest-dry reindex moodle-check acceptance screenshots e2e secrets-check tunnel-check \
+        lock docker-build docker-run smoke-hosted
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-15s %s\n",$$1,$$2}'
@@ -16,7 +17,7 @@ help:
 setup: setup-api setup-web ## Install backend (uv venv) and frontend (npm) dependencies
 
 setup-api: ## Create apps/api/.venv with Python 3.12 and install the API
-	cd $(API_DIR) && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]'
+	cd $(API_DIR) && UV_PROJECT_ENVIRONMENT=.venv uv sync --frozen --extra dev --extra pdf --python 3.12
 
 setup-web: ## Install web dependencies and the Playwright Chromium browser
 	cd $(WEB_DIR) && npm install && npx playwright install chromium
@@ -76,3 +77,17 @@ tunnel-check: ## Is the model tunnel up?
 secrets-check: ## The §9 security sweep over tracked files
 	@echo "Tracked secret-looking files:"; git ls-files | grep -Ei '\.env$$|\.db$$|data/raw|token|secret|id_ed25519' || echo "  none"
 	@echo "Server IPs / tokens / keys in tracked files:"; git grep -nE '10[.]119[.]|wstoken[=]|BEGIN [O]PENSSH' -- . ':!MASTER_BUILD_PROMPT.md' || echo "  none"
+
+lock: ## Re-resolve apps/api/uv.lock
+	cd $(API_DIR) && uv lock
+
+docker-build: ## Build the hosted API image (context = repo root)
+	docker build -f apps/api/Dockerfile -t campuspilot-api .
+
+docker-run: ## Run the hosted image on 127.0.0.1:8001 (fixture index, no download)
+	docker run --rm -p 127.0.0.1:8001:8000 -e INDEX_SOURCE=release -e INDEX_DOWNLOAD_TIMEOUT_S=5 \
+	  -e ALLOWED_ORIGINS=http://localhost:3000 campuspilot-api
+
+smoke-hosted: ## Smoke-test a hosted API: make smoke-hosted URL=https://... [ORIGIN=https://...]
+	@test -n "$(URL)" || { echo "usage: make smoke-hosted URL=https://api.example [ORIGIN=https://app.example]"; exit 2; }
+	$(PY) scripts/smoke_hosted.py "$(URL)" $(if $(ORIGIN),--origin "$(ORIGIN)")

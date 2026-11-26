@@ -1,0 +1,22 @@
+# Render Blueprint: one free Docker web service. No secrets (students bring their own LLM key).
+services:
+  - type: web
+    name: campuspilot-api
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DEPLOY_MODE
+        value: hosted
+      - key: INDEX_SOURCE
+        value: release
+      - key: INDEX_REPO
+        value: biprabhanu/iitb-campus-assistant
+      - key: CAMPUSPILOT_DB_PATH
+        value: /tmp/campuspilot.db
+      - key: ALLOWED_ORIGINS
+        sync: false # set to the Vercel URL in the Render dashboard

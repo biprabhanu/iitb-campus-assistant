@@ -1,0 +1,49 @@
+name: Build index
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 21 * * 0" # Monday 03:00 IST
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-index
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CAMPUSPILOT_DB_PATH: ${{ github.workspace }}/data/campuspilot.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install
+        working-directory: apps/api
+        run: uv sync --frozen --no-dev --extra pdf
+      - name: Ingest all approved sources (polite, rate-limited)
+        run: apps/api/.venv/bin/python scripts/ingest.py --all-approved
+      - name: Write manifest and checksums
+        id: release
+        run: |
+          set -euo pipefail
+          tag=$(apps/api/.venv/bin/python scripts/release_index.py --db data/campuspilot.db --out dist/index)
+          echo "base_tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Create the release
+        run: |
+          set -euo pipefail
+          base="${{ steps.release.outputs.base_tag }}"
+          tag="$base"
+          n=2
+          while gh release view "$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; do
+            tag="$base-$n"
+            n=$((n + 1))
+          done
+          gh release create "$tag" \
+            dist/index/campuspilot.db dist/index/manifest.json dist/index/SHA256SUMS \
+            --title "Index $tag" \
+            --notes "Search index built from the approved source registry. See manifest.json for per-document hashes."
