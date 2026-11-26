@@ -43,7 +43,10 @@ def test_snippet_is_collapsed_and_capped() -> None:
 
 
 def test_html_is_converted_and_scripts_dropped() -> None:
-    html = "<html><head><style>p{}</style></head><body><script>evil()</script><p>Hi <b>all</b></p></body></html>"
+    html = (
+        "<html><head><style>p{}</style></head>"
+        "<body><script>evil()</script><p>Hi <b>all</b></p></body></html>"
+    )
     parsed = parse_message(make_eml("s", html, html=True), uid="1")
     assert "Hi" in parsed.body and "evil" not in parsed.body and "p{}" not in parsed.body
 

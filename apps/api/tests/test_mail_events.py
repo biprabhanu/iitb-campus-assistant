@@ -155,7 +155,9 @@ def test_date_without_a_time_is_all_day() -> None:
 
 
 def test_tomorrow_is_relative_to_the_mails_own_date() -> None:
-    mail = _mail("Pre-placement talk tomorrow", "At 4 PM in SOM.", when=datetime(2026, 11, 20, tzinfo=UTC))
+    mail = _mail(
+        "Pre-placement talk tomorrow", "At 4 PM in SOM.", when=datetime(2026, 11, 20, tzinfo=UTC)
+    )
     event = detect_event(mail)
     assert event is not None
     assert event.start == datetime(2026, 11, 21, 16, 0, tzinfo=IST)
