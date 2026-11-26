@@ -5,7 +5,11 @@
 // Special switches (URL params or NEXT_PUBLIC_* env, see lib/config.ts):
 //   ?mockOffline=1  every request fails with MODEL_OFFLINE and /v1/status says offline
 //   ?mockWake=1     the first token takes ~5 s (shows "Waking up the model")
-import { mockOffline, mockWake } from "./config";
+//   ?mockHold=tool  freezes on the first step; ?mockHold=text freezes after a few words (screenshots)
+//
+// The answer text here is sample content only. It never states real policy facts, dates or rules;
+// the source cards use real registry URLs but generic snippets.
+import { mockHold, mockOffline, mockWake } from "./config";
 import type {
   ChatRequest,
   DoneEvent,
@@ -69,20 +73,24 @@ function scriptFor(message: string): Script {
     return {
       tools: ["search_campus_docs"],
       sources: [
-        doc("S1", "Academic Calendar 2026-27", "Academic Office", "https://www.iitb.ac.in/acad/academic-calendar", "Autumn semester: registration, classes, mid-semester and end-semester examinations, and the vacation periods.", 3, "p. 1"),
-        doc("S2", "Academic Calendar (PDF)", "Academic Office", "https://www.iitb.ac.in/acad/files/calendar.pdf", "Last day for course add/drop and for withdrawing from a course.", 3, "p. 2"),
+        doc("S1", "Academic calendar and timetable", "Academic Office", "https://acad.iitb.ac.in/academics/calendar-and-timetable", "The official page for the academic calendar and timetable, with links to the calendar and timetable PDFs.", 3),
+        doc("S2", "Academic calendar (PDF)", "Academic Office", "https://acad.iitb.ac.in/academics/calendar-and-timetable", "The calendar PDF linked from the Academic Office page.", 3, "PDF"),
       ],
       text:
-        "Here are the main dates in the **2026-27 academic calendar** [S1]. Treat these as a guide and confirm exact days on the official page.\n\n" +
-        "| Event | Autumn semester | Spring semester |\n|---|---|---|\n" +
-        "| Registration | Late July | Early January |\n| Classes begin | Early August | Mid January |\n| Mid-semester exams | September | February |\n| End-semester exams | November | April-May |\n\n" +
-        "A few things worth knowing:\n\n- **Add/drop** closes in the first two weeks of classes [S2].\n- Holidays and the semester break are listed on the same page.\n- Your department can publish its own exam timetable, so check it too.\n\nWant me to look up a specific date, such as the last day to withdraw from a course?",
+        "This is sample content from the built-in demo. In the live app I would read the **official academic calendar** [S1] and quote the dates for you.\n\n" +
+        "For now, here is where each kind of date lives:\n\n" +
+        "| Topic | Autumn | Spring |\n|---|---|---|\n" +
+        "| Semester dates | See the official calendar PDF | See the official calendar PDF |\n" +
+        "| Exam schedule | See the official calendar PDF | See the official calendar PDF |\n" +
+        "| Holidays | See the official calendar PDF | See the official calendar PDF |\n\n" +
+        "The calendar and timetable PDFs are linked from the Academic Office page [S2]. Always confirm dates there before planning around them.",
       done: { citations: ["S1", "S2"], freshness: "current" },
     };
   }
 
   if (/due|deadline|assignment/.test(m)) {
-    const mk = (n: number, course: string, title: string, due: string): SourceItem => ({
+    // Course codes and titles follow the demo fixtures in data/fixtures/moodle/.
+    const mk = (n: number, course: string, title: string, due: string, kind: "assign" | "quiz" = "assign"): SourceItem => ({
       id: `M${n}`,
       title,
       issuer: "Moodle",
@@ -90,22 +98,26 @@ function scriptFor(message: string): Script {
       kind: "moodle",
       course,
       due_at: due,
-      activity_url: "https://moodle.iitb.ac.in/mod/assign/view.php?id=1000" + n,
+      activity_url: `https://moodle.iitb.ac.in/mod/${kind}/view.php?id=${5100 + n}`,
       demo: true,
       checked_at: new Date().toISOString(),
     });
+    // "Tonight 11:59 PM", or one hour from now if that has already passed.
+    const tonight = istEvening(0);
+    const first = Date.parse(tonight) > Date.now() + 30 * 60_000 ? tonight : inHours(1);
     return {
       tools: ["get_my_deadlines"],
       sources: [
-        mk(1, "CS 101", "Programming Assignment 3", inHours(5)),
-        mk(2, "MA 105", "Problem Set 6", istEvening(1, 17, 0)),
-        mk(3, "PH 107", "Lab Report: Photoelectric Effect", istEvening(1, 23, 59)),
-        mk(4, "HS 101", "Reading Response Quiz", istEvening(3, 10, 30)),
-        mk(5, "CS 101", "Quiz 2 (online)", istEvening(5, 21, 0)),
+        mk(1, "IE624", "Assignment 3: Prototype report", first),
+        mk(2, "IE611", "Problem Set 4", istEvening(2, 17, 0)),
+        mk(3, "HS101", "Quiz 2 closes", istEvening(3, 11, 59), "quiz"),
+        mk(4, "MA205", "Homework 6", istEvening(4, 23, 59)),
+        mk(5, "IE624", "Project proposal revision", istEvening(5, 18, 0)),
+        mk(6, "IE611", "Midsem feedback form closes", istEvening(6, 23, 59), "quiz"),
       ],
       text:
-        "You have **5 deadlines** coming up this week. The most urgent is *Programming Assignment 3* in CS 101 [M1], due in a few hours.\n\nThese are sample deadlines from the demo Moodle, shown so you can see how the cards look.",
-      done: { citations: ["M1", "M2", "M3", "M4", "M5"], freshness: "unknown" },
+        "Here are your upcoming deadlines. The soonest is *Assignment 3: Prototype report* in IE624 [M1].\n\nThese are sample deadlines from the demo Moodle, shown so you can see how the cards look.",
+      done: { citations: ["M1", "M2", "M3", "M4", "M5", "M6"], freshness: "unknown" },
     };
   }
 
@@ -113,11 +125,15 @@ function scriptFor(message: string): Script {
     return {
       tools: ["search_campus_docs", "get_official_link"],
       sources: [
-        doc("S1", "Hostel Maintenance and Repair Requests", "Hostel Affairs Office", "https://www.iitb.ac.in/hostels/maintenance", "Raise a complaint for electrical, plumbing and carpentry issues through your hostel's maintenance portal or the hostel office.", 6, "Section 2"),
-        doc("S2", "Hostel Rules and Regulations", "Hostel Affairs Office", "https://www.iitb.ac.in/hostels/rules", "Residents report faults to the hostel secretary or warden; urgent faults can be reported at the hostel office.", 6, "p. 4"),
+        doc("S1", "IIT Bombay support portal", "IIT Bombay services", "https://support.iitb.ac.in/", "The institute's support portal, where hostel maintenance requests are raised.", 6),
+        doc("S2", "Hostel rules and regulations", "DoSA / Hostel authority", "https://dosa.iitb.ac.in/sites/default/files/hostelrulesregulations.pdf", "The hostel rules document, a good place to check who to contact for hostel matters.", 6, "PDF"),
       ],
       text:
-        "To report a maintenance problem in your hostel:\n\n1. **Log the complaint** on your hostel's maintenance portal, or at the hostel office if the portal is down [S1].\n2. **Describe the issue** clearly: room number, what is broken, and when it started.\n3. **Tell your hostel secretary** so it can be followed up [S2].\n4. For anything unsafe (exposed wiring, gas smell), go to the hostel office straight away.\n\nIf nothing happens in a few days, escalate to the warden.",
+        "This is sample content from the built-in demo. Maintenance requests are raised on the institute's support portal [S1], and the hostel rules explain who to contact for hostel matters [S2].\n\n" +
+        "1. **Open the support portal** from the link in the sources above.\n" +
+        "2. **Describe the problem** clearly: where it is and what is wrong.\n" +
+        "3. **Check the hostel rules** if you are not sure who handles it.\n\n" +
+        "CampusPilot can point you to the portal, but it cannot submit a request for you.",
       done: { citations: ["S1", "S2"], freshness: "current" },
     };
   }
@@ -125,9 +141,10 @@ function scriptFor(message: string): Script {
   if (/code of conduct|conduct|discipline|ragging/.test(m)) {
     return {
       tools: ["search_campus_docs"],
-      sources: [doc("S1", "Student Code of Conduct", "Dean of Student Affairs", "https://www.iitb.ac.in/students/code-of-conduct", "Students are expected to maintain academic integrity, respect others and follow institute rules.", 12, "p. 1-3")],
+      sources: [doc("S1", "Code of conduct", "Dean of Student Affairs", "https://dosa.iitb.ac.in/code-of-conduct", "The Dean of Student Affairs page for the student code of conduct.", 12)],
       text:
-        "The **student code of conduct** [S1] covers a few basics:\n\n- **Academic integrity:** no plagiarism, copying or unauthorised help in assessments.\n- **Respect:** harassment and ragging are prohibited and can lead to serious action.\n- **Campus rules:** follow hostel, library and lab regulations.\n- **Process:** violations go to a disciplinary committee, and you have a chance to respond.\n\nThis is a summary only. Read the full document before relying on any detail.",
+        "This is sample content from the built-in demo. The official **code of conduct** [S1] is published by the Dean of Student Affairs.\n\n" +
+        "In the live app I would summarise the sections you ask about and cite them. For now, open the source above to read the rules in full, and treat any summary as a starting point only.",
       done: { citations: ["S1"], freshness: "current" },
     };
   }
@@ -147,8 +164,8 @@ function scriptFor(message: string): Script {
   if (/^(ug|pg|phd)\b/.test(m)) {
     return {
       tools: ["search_campus_docs"],
-      sources: [doc("S1", "Hostel Room Allotment and Change Policy", "Hostel Affairs Office", "https://www.iitb.ac.in/hostels/room-allotment", "Room changes are considered at set times each semester, through the hostel council, subject to availability.", 8, "Section 5")],
-      text: "For your programme, room changes are handled by your hostel and usually open at the start of a semester [S1]. Apply through your hostel secretary, and expect approval to depend on vacancies. Check with your hostel office for the exact window.",
+      sources: [doc("S1", "Hostel rules and regulations", "DoSA / Hostel authority", "https://dosa.iitb.ac.in/sites/default/files/hostelrulesregulations.pdf", "The hostel rules document.", 8, "PDF")],
+      text: "This is sample content from the built-in demo. In the live app I would find the room-change rule for your programme and cite it [S1]. For now, check the hostel rules and your hostel office.",
       done: { citations: ["S1"], freshness: "current" },
     };
   }
@@ -158,12 +175,12 @@ function scriptFor(message: string): Script {
       tools: ["search_campus_docs", "get_official_link"],
       sources: [],
       text:
-        "I couldn't find a verified source for the 2031 mess menu, so I won't guess. Menus are set by each hostel's mess council and change often. The hostel office or your hostel mess secretary can tell you the current one.",
+        "I couldn't find a verified source for the 2031 mess menu, so I won't guess. The hostel office is the best place to ask.",
       done: {
         answer_kind: "abstain",
         office_links: [
-          { title: "Hostel Affairs Office", url: "https://www.iitb.ac.in/hostels", issuer: "IIT Bombay" },
-          { title: "IIT Bombay home page", url: "https://www.iitb.ac.in", issuer: "IIT Bombay" },
+          { title: "Student Affairs Office", url: "https://www.iitb.ac.in/students/students-affair-office", issuer: "IIT Bombay" },
+          { title: "Contact IIT Bombay", url: "https://www.iitb.ac.in/contact-us", issuer: "IIT Bombay" },
         ],
       },
     };
@@ -171,7 +188,7 @@ function scriptFor(message: string): Script {
 
   return {
     tools: ["search_campus_docs"],
-    sources: [doc("S1", "Student Information Handbook", "Dean of Student Affairs", "https://www.iitb.ac.in/students/handbook", "An overview of student services, offices and policies at IIT Bombay.", 20, "Contents")],
+    sources: [doc("S1", "Student Affairs Office", "Student Affairs Office", "https://www.iitb.ac.in/students/students-affair-office", "The Student Affairs Office page.", 20)],
     text:
       "You're using CampusPilot's **built-in demo**, so I can only answer a few sample questions here: the academic calendar, deadlines, hostel maintenance, the code of conduct, room changes and the mess menu.\n\nWith the real model connected, I'd search the official IIT Bombay pages for this [S1] and cite what I find.",
     done: { citations: ["S1"], freshness: "current" },
@@ -202,10 +219,12 @@ export async function* mockChatStream(req: ChatRequest, signal: AbortSignal): As
   }
 
   const script = scriptFor(req.message);
+  const hold = mockHold();
 
   for (const name of script.tools) {
     const label = LABELS[name];
     yield { event: "tool", data: { name, label, state: "start" } };
+    if (hold === "tool") await sleep(600_000, signal); // screenshots: stay on this step
     await sleep(650, signal);
     if (signal.aborted) return;
     yield { event: "tool", data: { name, label, state: "done" } };
@@ -215,10 +234,12 @@ export async function* mockChatStream(req: ChatRequest, signal: AbortSignal): As
 
   if (mockWake()) await sleep(5000, signal);
 
+  let sent = 0;
   for (const piece of chunkText(script.text)) {
     if (signal.aborted) return;
     yield { event: "token", data: { text: piece } };
     await sleep(22, signal);
+    if (hold === "text" && ++sent === 14) await sleep(600_000, signal); // screenshots: stop mid-sentence
   }
   if (signal.aborted) return;
 

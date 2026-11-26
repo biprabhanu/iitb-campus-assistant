@@ -1,34 +1,40 @@
 "use client";
 import { ExternalLink } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
-import { checkedAgo } from "@/lib/utils";
+import { checkedAgo, domainOf } from "@/lib/utils";
 import type { SourceItem } from "@/lib/types";
 
-/** The small numbered chip inside an answer. Hover or focus shows a preview card. */
+// Keep the preview clear of the sticky header (top) and the composer (bottom) so it flips
+// to the other side instead of covering them. It opens below the chip first, so it does
+// not sit on top of the sources row above the answer.
+const PREVIEW_PADDING = { top: 72, bottom: 150, left: 12, right: 12 };
+
+/** The small numbered chip inside an answer. Hover or keyboard focus shows a preview card. */
 export function CitationChip({ number, source }: { number: string; source: SourceItem }) {
   const href = source.activity_url || source.url;
+  const domain = domainOf(source.url);
+  const meta = [source.issuer, domain, source.locator].filter(Boolean).join(" · ");
   const preview = (
     <div className="space-y-1">
       <p className="text-sm font-medium leading-snug text-foreground">{source.title}</p>
       <p className="text-muted-foreground">
-        {source.issuer}
-        {source.locator ? ` · ${source.locator}` : ""}
+        {meta}
         {checkedAgo(source.checked_at) ? ` · ${checkedAgo(source.checked_at)}` : ""}
       </p>
       {source.snippet && <p className="line-clamp-4 text-foreground/80">{source.snippet}</p>}
       <p className="flex items-center gap-1 pt-0.5 text-accent-text">
-        Open source <ExternalLink className="h-3 w-3" />
+        Open source <ExternalLink className="h-3 w-3" aria-hidden />
       </p>
     </div>
   );
   return (
-    <Tooltip content={preview} side="top">
+    <Tooltip content={preview} side="bottom" collisionPadding={PREVIEW_PADDING}>
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
         aria-label={`Source ${number}: ${source.title}`}
-        className="cite mx-0.5 inline-flex h-[1.35rem] min-w-[1.35rem] -translate-y-px items-center justify-center rounded-md bg-accent-soft px-1 align-baseline text-[0.72rem] font-semibold leading-none text-accent-text no-underline transition-colors duration-150 hover:bg-primary hover:text-primary-foreground"
+        className="cite cite-chip mx-0.5 -translate-y-px align-baseline"
       >
         {number}
       </a>

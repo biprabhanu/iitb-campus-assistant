@@ -85,3 +85,36 @@ export function prepareCitations(text: string, validIds: string[]): string {
   const cleaned = text.replace(MARKER, (_m, id: string) => (valid.has(id) ? `[${validIds.indexOf(id) + 1}](cite:${id})` : ""));
   return cleaned.replace(/\s?\[[SM]?\d*$/, "").replace(/ {2,}/g, " ");
 }
+
+// ---------- small helpers for cards ----------
+
+/** "acad.iitb.ac.in" from a full URL (without a leading "www."). */
+export function domainOf(url?: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Which of the 6 course colours (CSS classes .course-0 ... .course-5) a course code gets.
+ * The same code always gets the same colour.
+ */
+export function courseColorIndex(code: string): number {
+  let hash = 0;
+  for (const ch of code.replace(/\s+/g, "").toUpperCase()) hash = (hash * 31 + ch.charCodeAt(0)) % 1009;
+  return hash % 6;
+}
+
+// Past-tense wording for a finished step, keyed by tool name (labels are fixed by docs/CONTRACT.md).
+const DONE_LABELS: Record<string, string> = {
+  search_campus_docs: "Searched campus documents",
+  get_official_link: "Found the official page",
+  list_my_courses: "Read your Moodle courses",
+  get_my_deadlines: "Checked your Moodle deadlines",
+  get_course_contents: "Opened course contents",
+  ask_clarification: "Asked a clarifying question",
+};
+export const doneLabel = (name: string, fallback: string) => DONE_LABELS[name] ?? fallback;

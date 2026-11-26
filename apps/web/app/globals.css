@@ -3,7 +3,9 @@
 /* Dark mode is the default; the "dark" class is put on <html> (see layout.tsx). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* ---------- theme tokens (shadcn-style CSS variables) ---------- */
+/* ---------- theme tokens (shadcn-style CSS variables) ----------
+   Contrast (WCAG AA needs 4.5:1 for text), checked for both themes:
+   muted text 7.0+ on every surface, accent text 7.0+, status colours 4.8+. */
 :root {
   --background: #ffffff;
   --foreground: #18181b;
@@ -124,6 +126,10 @@ body {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
+@keyframes skeleton {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -145,6 +151,13 @@ body {
   background: var(--accent-text);
   animation: blink 1s steps(1) infinite;
 }
+/* Placeholder bars shown while we wait for the first word of an answer */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--muted) 0%, color-mix(in oklab, var(--muted) 55%, var(--foreground) 10%) 50%, var(--muted) 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.6s linear infinite;
+}
 .shimmer-text {
   background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 45%, var(--muted-foreground) 90%);
   background-size: 200% 100%;
@@ -163,7 +176,50 @@ body {
   }
   .is-streaming .prose-answer > p:last-child::after, .caret::after { animation: none; }
   .shimmer-text { animation: none; color: var(--muted-foreground); background: none; }
+  .skeleton { animation: none; }
 }
+
+/* ---------- small shared pieces ---------- */
+/* The numbered chip: used inside answers and on the source cards, so both look the same. */
+.cite-chip {
+  display: inline-flex;
+  height: 1.35rem;
+  min-width: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  padding: 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent-text);
+  text-decoration: none;
+}
+a.cite-chip { transition: background-color 150ms, color 150ms; }
+a.cite-chip:hover { background: var(--primary); color: var(--primary-foreground); }
+
+/* A soft indigo glow behind the empty-state greeting (static on purpose) */
+.hero-glow {
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--primary) 34%, transparent), transparent);
+  opacity: 0.4;
+}
+.dark .hero-glow { opacity: 0.75; }
+
+/* Course chips: one colour per course code. Each pair is AA-contrast in its theme. */
+.course-0 { --chip-bg: #e0e7ff; --chip-fg: #3730a3; }
+.course-1 { --chip-bg: #e0f2fe; --chip-fg: #075985; }
+.course-2 { --chip-bg: #d1fae5; --chip-fg: #065f46; }
+.course-3 { --chip-bg: #fef3c7; --chip-fg: #92400e; }
+.course-4 { --chip-bg: #ffe4e6; --chip-fg: #9f1239; }
+.course-5 { --chip-bg: #ede9fe; --chip-fg: #5b21b6; }
+.dark .course-0 { --chip-bg: #20203c; --chip-fg: #a5b4fc; }
+.dark .course-1 { --chip-bg: #102c3a; --chip-fg: #7dd3fc; }
+.dark .course-2 { --chip-bg: #112f28; --chip-fg: #6ee7b7; }
+.dark .course-3 { --chip-bg: #3a2a12; --chip-fg: #fcd34d; }
+.dark .course-4 { --chip-bg: #3a1921; --chip-fg: #fda4af; }
+.dark .course-5 { --chip-bg: #271f3d; --chip-fg: #c4b5fd; }
+.course-chip { background: var(--chip-bg); color: var(--chip-fg); }
 
 /* ---------- rendered markdown (answers) ---------- */
 .prose-answer > :first-child { margin-top: 0; }
@@ -191,6 +247,7 @@ body {
   padding: 0.1em 0.4em;
 }
 .prose-answer table { width: 100%; border-collapse: collapse; font-size: 0.93em; }
-.prose-answer th, .prose-answer td { text-align: left; padding: 0.55em 0.8em; border-bottom: 1px solid var(--border); }
+/* min-width keeps columns readable: on a phone a wide table scrolls sideways instead of squashing */
+.prose-answer th, .prose-answer td { min-width: 7.5rem; text-align: left; vertical-align: top; padding: 0.55em 0.8em; border-bottom: 1px solid var(--border); }
 .prose-answer th { font-weight: 600; background: var(--muted); }
 .prose-answer tr:last-child td { border-bottom: 0; }

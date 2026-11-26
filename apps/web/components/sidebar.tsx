@@ -1,7 +1,10 @@
 "use client";
-import { useState } from "react";
-import { Check, MessageSquare, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import { useRef, useState } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { Check, MessageSquare, MoreHorizontal, Pencil, Plus, Settings, Trash2, X } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
+import { useDrawer, useMediaQuery } from "@/hooks/use-drawer";
 import { groupConversations } from "@/lib/history";
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/lib/types";
@@ -35,6 +38,7 @@ function ChatRow({
 }) {
   const [mode, setMode] = useState<"view" | "rename" | "confirm">("view");
   const [draft, setDraft] = useState(conv.title);
+  const afterMenu = useRef(false); // true when a menu choice should keep focus for itself
 
   if (mode === "rename") {
     const save = () => {
@@ -71,27 +75,57 @@ function ChatRow({
     );
   }
 
-  const iconBtn =
-    "flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-border hover:text-foreground";
+  const menuItem =
+    "flex h-9 cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 text-sm outline-none data-[highlighted]:bg-muted";
   return (
-    <div className={cn("group/row relative flex h-9 items-center rounded-lg transition-colors duration-150", active ? "bg-muted" : "hover:bg-muted/70")}>
+    <div className={cn("group/row relative flex h-10 items-center rounded-lg transition-colors duration-150 md:h-9", active ? "bg-border/70" : "hover:bg-border/40")}>
       <button
         type="button"
         onClick={onSelect}
         aria-current={active ? "page" : undefined}
-        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-left text-sm"
+        className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg px-2.5 text-left text-sm group-focus-within/row:pr-10 group-hover/row:pr-10 group-has-[[data-state=open]]/row:pr-10 [@media(hover:none)]:pr-10"
       >
         <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="truncate">{conv.title}</span>
       </button>
-      <div className="absolute right-1 flex items-center gap-0.5 rounded-md bg-muted pl-1 opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-        <button aria-label={`Rename ${conv.title}`} className={iconBtn} onClick={() => { setDraft(conv.title); setMode("rename"); }}>
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button aria-label={`Delete ${conv.title}`} className={iconBtn} onClick={() => setMode("confirm")}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      </div>
+      {/* The "..." menu: always visible on touch screens, on hover or focus with a mouse. */}
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Options for ${conv.title}`}
+            className="absolute right-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100 data-[state=open]:bg-foreground/10 data-[state=open]:opacity-100 group-focus-within/row:opacity-100 group-hover/row:opacity-100 [@media(hover:hover)]:opacity-0"
+          >
+            <MoreHorizontal className="h-4 w-4" aria-hidden />
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="end"
+            sideOffset={4}
+            collisionPadding={12}
+            onCloseAutoFocus={(e) => {
+              if (afterMenu.current) e.preventDefault(); // the rename box takes focus instead
+              afterMenu.current = false;
+            }}
+            className="animate-fade-up z-[60] min-w-36 rounded-xl border bg-card p-1 text-card-foreground shadow-lg"
+          >
+            <DropdownMenu.Item
+              className={menuItem}
+              onSelect={() => {
+                afterMenu.current = true;
+                setDraft(conv.title);
+                setMode("rename");
+              }}
+            >
+              <Pencil className="h-4 w-4 text-muted-foreground" aria-hidden /> Rename
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className={cn(menuItem, "text-danger")} onSelect={() => setMode("confirm")}>
+              <Trash2 className="h-4 w-4" aria-hidden /> Delete
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
     </div>
   );
 }
@@ -99,6 +133,11 @@ function ChatRow({
 export function Sidebar(props: SidebarProps) {
   const { conversations, activeId, mobileOpen, desktopOpen, onClose, onNew, onSelect, onRename, onDelete, onOpenSettings } = props;
   const groups = groupConversations(conversations);
+  const asideRef = useRef<HTMLElement>(null);
+  // The drawer behaviour (focus trap, Esc) only applies on phones, where the sidebar slides over the page.
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const drawerActive = mobileOpen && !isDesktop;
+  useDrawer(asideRef, drawerActive, onClose);
 
   return (
     <>
@@ -106,10 +145,13 @@ export function Sidebar(props: SidebarProps) {
       <div
         aria-hidden
         onClick={onClose}
-        className={cn("fixed inset-0 z-30 bg-black/60 transition-opacity duration-200 md:hidden", mobileOpen ? "opacity-100" : "pointer-events-none opacity-0")}
+        className={cn("fixed inset-0 z-30 bg-black/65 backdrop-blur-[2px] transition-opacity duration-200 md:hidden", mobileOpen ? "opacity-100" : "pointer-events-none opacity-0")}
       />
       <aside
+        ref={asideRef}
         aria-label="Chat history"
+        role={drawerActive ? "dialog" : undefined}
+        aria-modal={drawerActive ? true : undefined}
         data-testid="sidebar"
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col border-r bg-sidebar transition-[transform,margin,visibility] duration-200 md:static md:translate-x-0",
@@ -117,6 +159,15 @@ export function Sidebar(props: SidebarProps) {
           desktopOpen ? "md:visible md:ml-0" : "md:invisible md:-ml-[260px]",
         )}
       >
+        {/* Drawer header (phones only): the mark, the name and a close button */}
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b px-3 md:hidden">
+          <BrandMark className="h-7 w-7" />
+          <span className="text-[15px] font-semibold tracking-tight">CampusPilot</span>
+          <Button variant="ghost" size="icon" className="ml-auto" onClick={onClose} aria-label="Close sidebar">
+            <X className="h-5 w-5" aria-hidden />
+          </Button>
+        </div>
+
         <div className="p-3">
           <Button variant="outline" className="w-full justify-start rounded-xl" onClick={onNew}>
             <Plus className="h-4 w-4" aria-hidden /> New chat

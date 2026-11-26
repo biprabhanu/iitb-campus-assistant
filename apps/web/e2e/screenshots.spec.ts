@@ -1,5 +1,6 @@
-// Takes the review screenshots into docs/screenshots/<name>-<width>-<theme>.png.
-// Run with: SCREENSHOTS=1 npx playwright test --project=screenshots
+// Takes the review screenshots into docs/screenshots/<scene>-<width>-<theme>.png.
+// Run with: npm run screenshots   (it deletes the old PNGs first, so no stale files remain)
+// or:       SCREENSHOTS=1 npx playwright test --project=screenshots
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -17,14 +18,35 @@ async function sendAndWait(page: Page, text: string) {
   await page.waitForTimeout(400);
 }
 
-async function shot(page: Page, name: string, width: number, theme: string) {
+/** Start a question but do not wait for the stream to end (for the frozen "streaming" scenes). */
+async function sendOnly(page: Page, text: string) {
+  await page.getByLabel("Message CampusPilot").fill(text);
+  await page.getByRole("button", { name: "Send message" }).click();
+}
+
+/** Let fonts and animations finish, so every capture is stable. */
+async function settle(page: Page) {
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(350);
+}
+
+/** Capture with no stray focus ring, tooltip or hover state. */
+async function shot(page: Page, name: string, width: number, theme: string, opts: { keepFocus?: boolean } = {}) {
+  if (!opts.keepFocus) {
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+    await page.mouse.move(width - 3, 450); // an empty spot, away from every control
+    await page.waitForTimeout(250); // tooltips close shortly after the pointer leaves
+  }
+  await settle(page);
   await page.screenshot({ path: path.join(OUT, `${name}-${width}-${theme}.png`) });
 }
 
 for (const size of SIZES) {
   for (const theme of THEMES) {
     test.describe(`${size.width} ${theme}`, () => {
-      test.use({ viewport: size, reducedMotion: "reduce" });
+      // The 390 px runs act like a phone (touch, no hover), so the "..." buttons show as they do on a real one.
+      const phone = size.width < 500;
+      test.use({ viewport: size, reducedMotion: "reduce", isMobile: phone, hasTouch: phone });
 
       test.beforeEach(async ({ page }) => {
         await page.addInitScript((t) => localStorage.setItem("campuspilot.theme", t), theme);
@@ -44,9 +66,20 @@ for (const size of SIZES) {
       test("answer-sources", async ({ page }) => {
         await open(page);
         await sendAndWait(page, "Academic calendar");
-        await page.getByRole("article").getByRole("link", { name: /^Source 1:/ }).hover();
-        await page.waitForTimeout(300);
+        // On the phone, show the top of the answer, with the table running under the composer fade.
+        if (size.width < 500) await page.getByTestId("scroll-area").evaluate((el) => (el.scrollTop = 0));
         await shot(page, "answer-sources", size.width, theme);
+      });
+
+      // The one scene where a hover preview is meant to be open.
+      test("citation-preview", async ({ page }) => {
+        await open(page);
+        await sendAndWait(page, "Academic calendar");
+        await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.()); // no focus ring on the composer
+        await page.getByRole("article").getByRole("link", { name: /^Source 1:/ }).hover();
+        await page.waitForTimeout(400);
+        await settle(page);
+        await page.screenshot({ path: path.join(OUT, `citation-preview-${size.width}-${theme}.png`) });
       });
 
       test("deadlines", async ({ page }) => {
@@ -72,13 +105,51 @@ for (const size of SIZES) {
       test("offline", async ({ page }) => {
         await open(page, "?mockOffline=1");
         await sendAndWait(page, "Academic calendar");
+        await expect(page.getByText("Retry status check")).toBeVisible();
         await shot(page, "offline", size.width, theme);
+      });
+
+      // A step is running: shimmer on the step, grey skeleton lines for the answer.
+      test("streaming", async ({ page }) => {
+        await open(page, "?mockHold=tool");
+        await sendOnly(page, "Academic calendar");
+        await expect(page.getByRole("list", { name: "Progress" })).toBeVisible();
+        await page.waitForTimeout(300);
+        await shot(page, "streaming", size.width, theme);
+      });
+
+      // Part-way through the text: the blinking caret.
+      test("streaming-caret", async ({ page }) => {
+        await open(page, "?mockHold=text");
+        await sendOnly(page, "Academic calendar");
+        await expect(page.getByRole("article")).toContainText("sample content", { timeout: 10_000 });
+        await page.waitForTimeout(300);
+        await shot(page, "streaming-caret", size.width, theme);
+      });
+
+      // The first word takes longer than 3 s: "Waking up the model".
+      test("waking", async ({ page }) => {
+        await open(page, "?mockWake=1");
+        await sendOnly(page, "Academic calendar");
+        await expect(page.getByText("Waking up the model")).toBeVisible({ timeout: 8_000 });
+        await shot(page, "waking", size.width, theme);
+      });
+
+      test("settings", async ({ page }) => {
+        await open(page);
+        await page.getByRole("button", { name: /^Moodle/ }).click();
+        await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+        await page.waitForTimeout(300);
+        await shot(page, "settings", size.width, theme);
       });
 
       test("mobile-sidebar", async ({ page }) => {
         test.skip(size.width > 500, "mobile only");
         await open(page);
         await sendAndWait(page, "Academic calendar");
+        await page.getByRole("button", { name: "Toggle sidebar" }).click();
+        await page.getByRole("button", { name: "New chat" }).click();
+        await sendAndWait(page, "What's due this week?");
         await page.getByRole("button", { name: "Toggle sidebar" }).click();
         await page.waitForTimeout(400);
         await shot(page, "mobile-sidebar", size.width, theme);

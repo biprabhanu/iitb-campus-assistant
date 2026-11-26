@@ -19,3 +19,18 @@ function flag(name: string, envValue: string | undefined): boolean {
 export const mockOffline = () => flag("mockOffline", process.env.NEXT_PUBLIC_MOCK_OFFLINE);
 /** Simulates a cold model: the first token takes ~5 s. */
 export const mockWake = () => flag("mockWake", process.env.NEXT_PUBLIC_MOCK_WAKE);
+
+/**
+ * Mock-only, for screenshots: freeze the stream part-way.
+ *   ?mockHold=tool  stays on the first step (shimmer + skeleton)
+ *   ?mockHold=text  stops after a few words (blinking caret)
+ */
+export function mockHold(): "tool" | "text" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = new URLSearchParams(window.location.search).get("mockHold");
+    return v === "tool" || v === "text" ? v : null;
+  } catch {
+    return null;
+  }
+}

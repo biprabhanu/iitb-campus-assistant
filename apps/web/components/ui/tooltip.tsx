@@ -14,11 +14,14 @@ export function Tooltip({
   content,
   children,
   side = "bottom",
+  collisionPadding = 12,
   className,
 }: {
   content: React.ReactNode;
   children: React.ReactElement;
   side?: "top" | "bottom" | "left" | "right";
+  /** Keep this many px between the popup and the screen edges (a number, or per side). */
+  collisionPadding?: number | Partial<Record<"top" | "bottom" | "left" | "right", number>>;
   className?: string;
 }) {
   return (
@@ -28,7 +31,8 @@ export function Tooltip({
         <TooltipPrimitive.Content
           side={side}
           sideOffset={8}
-          collisionPadding={12}
+          collisionPadding={collisionPadding}
+          avoidCollisions
           className={cn(
             "animate-fade-up z-50 max-w-[18rem] rounded-xl border bg-card px-3 py-2 text-xs leading-relaxed text-card-foreground shadow-lg",
             className,

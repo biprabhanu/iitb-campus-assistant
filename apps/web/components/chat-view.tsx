@@ -64,7 +64,7 @@ export function ChatView({ chatId, messages, loaded, streamingId, waking, onSend
         {empty ? (
           <EmptyState onPick={onSend} />
         ) : (
-          <div className="mx-auto w-full max-w-[760px] space-y-8 px-4 pb-10 pt-6" role="log" aria-label="Conversation">
+          <div className="mx-auto w-full max-w-[760px] space-y-8 px-4 pb-12 pt-6" role="log" aria-label="Conversation">
             {messages.map((m, i) => (
               <div key={m.id} className="group/msg">
                 {m.role === "user" ? (
@@ -93,7 +93,7 @@ export function ChatView({ chatId, messages, loaded, streamingId, waking, onSend
             stick.current = true;
             scrollToBottom(true);
           }}
-          className="animate-fade-up absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-3.5 py-1.5 text-sm font-medium shadow-lg transition-colors duration-150 hover:bg-muted"
+          className="animate-fade-up absolute bottom-10 left-1/2 z-20 inline-flex -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-full border bg-card px-3.5 py-1.5 text-sm font-medium shadow-lg transition-colors duration-150 hover:bg-muted"
         >
           <ArrowDown className="h-4 w-4" aria-hidden /> Jump to latest
         </button>

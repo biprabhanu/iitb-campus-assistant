@@ -1,8 +1,10 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { AppActionsProvider } from "@/components/app-actions";
 import { ChatView } from "@/components/chat-view";
 import { Composer } from "@/components/composer";
 import { Header } from "@/components/header";
+import { OfflineNotice } from "@/components/offline-notice";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -26,19 +28,15 @@ export function AppShell() {
     setSidebar(!visible);
   }, [desktopOpen, mobileOpen]);
 
-  // Escape closes the mobile drawer.
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSidebar(null);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mobileOpen]);
-
   // On mobile, picking something closes the drawer.
   const closeMobile = () => setSidebar((s) => (s === true ? null : s));
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+
+  const actions = useMemo(() => ({ openSettings }), [openSettings]);
 
   return (
     <TooltipProvider>
+      <AppActionsProvider value={actions}>
       <div className="flex h-dvh w-full overflow-hidden bg-background">
         <Sidebar
           conversations={chat.conversations}
@@ -62,7 +60,7 @@ export function AppShell() {
           }}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Header state={status} waking={chat.waking} onToggleSidebar={toggleSidebar} onOpenSettings={() => setSettingsOpen(true)} />
+          <Header state={status} waking={chat.waking} onToggleSidebar={toggleSidebar} onOpenSettings={openSettings} />
           <main className="flex min-h-0 flex-1 flex-col">
             <ChatView
               chatId={chat.activeId}
@@ -74,7 +72,13 @@ export function AppShell() {
               onRegenerate={chat.regenerate}
               onFeedback={chat.setFeedback}
             />
-            <Composer onSend={chat.send} onStop={chat.stop} streaming={chat.isStreaming} focusKey={chat.activeId} />
+            <Composer
+              onSend={chat.send}
+              onStop={chat.stop}
+              streaming={chat.isStreaming}
+              focusKey={chat.activeId}
+              notice={<OfflineNotice state={status} onRetry={status.refresh} />}
+            />
           </main>
         </div>
       </div>
@@ -85,6 +89,7 @@ export function AppShell() {
         onRefreshStatus={status.refresh}
         onClearHistory={chat.clearAll}
       />
+      </AppActionsProvider>
     </TooltipProvider>
   );
 }
