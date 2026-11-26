@@ -74,4 +74,4 @@ tunnel-check: ## Is the model tunnel up?
 
 secrets-check: ## The §9 security sweep over tracked files
 	@echo "Tracked secret-looking files:"; git ls-files | grep -Ei '\.env$$|\.db$$|data/raw|token|secret|id_ed25519' || echo "  none"
-	@echo "Server IPs / tokens / keys in tracked files:"; git grep -nE '10[.]119[.]|wstoken[=]|BEGIN OPENSSH' -- . ':!MASTER_BUILD_PROMPT.md' || echo "  none"
+	@echo "Server IPs / tokens / keys in tracked files:"; git grep -nE '10[.]119[.]|wstoken[=]|BEGIN [O]PENSSH' -- . ':!MASTER_BUILD_PROMPT.md' || echo "  none"
