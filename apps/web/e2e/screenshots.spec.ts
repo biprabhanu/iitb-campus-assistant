@@ -147,7 +147,7 @@ for (const size of SIZES) {
       const openHosted = async (page: Page, query = "", opts: { key?: boolean; provider?: string } = {}) => {
         if (opts.key) {
           await page.addInitScript((p) => {
-            if (!sessionStorage.getItem("campuspilot.llm.v1")) sessionStorage.setItem("campuspilot.llm.v1", JSON.stringify({ provider: p, key: "gsk_abcdefghijklmnopqrstuvwxyz123456" }));
+            if (!sessionStorage.getItem("campuspilot.llm.v1")) sessionStorage.setItem("campuspilot.llm.v1", JSON.stringify({ provider: p, key: "testkey_abcdefghijklmnopqrstuvwxyz123456" }));
           }, opts.provider ?? "groq");
         }
         await page.goto(`/?mockHosted=1${query}`);
@@ -165,7 +165,7 @@ for (const size of SIZES) {
         await openHosted(page);
         const card = page.getByTestId("key-card");
         await card.getByLabel("AI provider").selectOption("gemini");
-        await card.getByLabel(/API key/).fill("AIzaSyA-abcdefghijklmnopqrstuvwxyz1234");
+        await card.getByLabel(/API key/).fill("testkey-gemini-abcdefghijklmnopqrstuvwxyz");
         await card.getByRole("button", { name: "Show key" }).click();
         await card.getByRole("button", { name: "Test key" }).click();
         await expect(card.getByRole("status").filter({ hasText: "key works" })).toBeVisible();

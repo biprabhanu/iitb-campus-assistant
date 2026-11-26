@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from campuspilot.config import get_settings
 from campuspilot.main import create_app
 
-FAKE_KEY = "gsk_FAKEKEY0123456789abcdefXYZ"
+FAKE_KEY = "FAKEKEY_test_0123456789abcdefXYZ"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 HEADERS = {"X-LLM-Provider": "groq", "X-LLM-Key": FAKE_KEY}
 

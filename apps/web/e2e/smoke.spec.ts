@@ -74,7 +74,7 @@ test("chat list: the ... menu offers rename and delete", async ({ page }) => {
 
 // ---------- hosted mode (bring-your-own-key), in mock: /?mockHosted=1 ----------
 
-const GOOD_KEY = "gsk_abcdefghijklmnopqrstuvwxyz123456";
+const GOOD_KEY = "testkey_abcdefghijklmnopqrstuvwxyz123456";
 const BAD_KEY = "badkey_abcdefghijklmnopqrstuvwxyz";
 
 /** Pretend a key was saved earlier in this tab. */
