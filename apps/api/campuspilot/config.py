@@ -105,7 +105,8 @@ class Settings(BaseSettings):
     # Serve clearly labelled fixture data for Webmail / ASC instead of a live account
     # (mock-dev, screenshots). Off by default so a real user never sees fake mail.
     connectors_demo: bool = False
-    # Webmail over IMAP (read-only). Host and port are confirmed by the owner before Phase 2.
+    # Webmail over IMAP (read-only). Checked live on 27 Nov 2026 from the campus network:
+    # imap.iitb.ac.in:993, TLS 1.2 only (see mail/imap_client.py), login = LDAP id.
     imap_host: str = "imap.iitb.ac.in"
     imap_port: int = 993
     imap_folder: str = "INBOX"

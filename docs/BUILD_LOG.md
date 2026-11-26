@@ -62,3 +62,13 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Calendar writes are protected by a required `X-CampusPilot-Confirm: yes` header (forces a CORS preflight, so another site can't trigger logins or events) and are never a model tool.
 - No new dependencies: imaplib/email, httpx + BeautifulSoup, Google REST over httpx with PKCE (no Google SDK, keeps the venv and image small).
 - The lead writes the shared plumbing (registry, orchestrator, routes, cards, sentences, mock LLM) in Phase 0 so workers only touch their own packages; Phase 0 module stubs keep the exact signatures.
+
+## v2 Phase 2: integration (27 Nov 2026)
+
+- Merged `v2/webmail`, `v2/asc`, `v2/gcal` into `main` (no conflicts; 458 pytest). Workers' requests: two lead contract tests depended on the Phase 0 stubs; one would have opened a real IMAP connection after the merge. Both now fake the module.
+- Webmail login, checked live from the campus network without logging in: `imap.iitb.ac.in` resolves to a campus-internal address, ports 993/143 open; perdition IMAP proxy; DigiCert `*.iitb.ac.in` certificate (valid to Feb 2027); TLS 1.2 only, cipher `AES256-GCM-SHA384` (RSA key exchange); pre-auth capabilities list no AUTH= mechanisms and no LOGINDISABLED, so plain IMAP LOGIN over TLS.
+- Fix 1 (blocker): Python 3.12's default ciphers exclude RSA key exchange, so every connection failed the handshake. `imap_ssl_context()` keeps certificate and hostname verification and TLS ≥1.2, and appends only `AES256-GCM-SHA384` / `AES128-GCM-SHA256` after the ECDHE suites (no forward secrecy on this server's side; still encrypted and authenticated). Verified live: TLSv1.2 handshake and server greeting with the fixed client.
+- Fix 2: TLS / certificate failures no longer say "connect to the VPN"; they say the secure connection failed and the password was not sent.
+- Fix 3: the login username is the LDAP id; a typed `@iitb.ac.in` suffix is dropped before LOGIN and storage.
+- Fix 4: webmail is Roundcube ("WM2 IITB"), so mail cards get an "open in webmail" link built from the IMAP UID. Whether Roundcube's UIDs match ours is a Phase 2 live check.
+- Still to verify with the owner's own login (owner types it; Claude never sees it): LOGIN accepted with the LDAP id, SEARCH behaviour, folder names.

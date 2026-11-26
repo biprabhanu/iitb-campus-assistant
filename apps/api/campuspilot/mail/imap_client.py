@@ -16,8 +16,10 @@ import contextlib
 import imaplib
 import re
 import socket
+import ssl
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from urllib.parse import quote, urlencode
 
 from campuspilot.config import Settings
 from campuspilot.connectors.errors import ConnectorError
@@ -36,6 +38,47 @@ _UNREACHABLE = (
 _TIMEOUT = "IITB Webmail took too long to answer. Check the campus network or the IITB VPN."
 _AUTH = "IITB Webmail rejected the username or password."
 _SERVER = "IITB Webmail returned an unexpected answer. Try again in a moment."
+_TLS = (
+    "Could not open a secure connection to IITB Webmail. The server's security settings may "
+    "have changed; CampusPilot did not send your password."
+)
+_CERT = (
+    "IITB Webmail's certificate could not be verified, so CampusPilot did not send your "
+    "password. Check that you are on the real campus network or IITB VPN."
+)
+
+# Checked live from the campus network on 27 Nov 2026 (no login): imap.iitb.ac.in:993 is a
+# "perdition" IMAP proxy that speaks only TLS 1.2 and offers only RSA key-exchange AES-GCM
+# ciphers (AES256-GCM-SHA384). Python 3.12's default cipher list leaves RSA key exchange out
+# (it has no forward secrecy), so the default handshake fails. We keep every other default
+# (certificate and hostname checks stay on) and add just those two ciphers after the modern
+# ones, so a server upgrade to ECDHE or TLS 1.3 is picked up automatically.
+IMAP_CIPHERS = (
+    "ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:AES256-GCM-SHA384:AES128-GCM-SHA256"
+    ":!aNULL:!eNULL:!MD5:!SHA1"
+)
+
+
+def imap_ssl_context() -> ssl.SSLContext:
+    """TLS settings for IITB's IMAP server (see the comment above IMAP_CIPHERS)."""
+    context = ssl.create_default_context()  # verifies the certificate and the hostname
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.set_ciphers(IMAP_CIPHERS)
+    return context
+
+
+def webmail_link(base_url: str, folder: str, uid: str) -> str | None:
+    """A link that opens one mail in IITB's Roundcube webmail ("WM2 IITB").
+
+    Roundcube's message URL is `?_task=mail&_mbox=<folder>&_uid=<uid>&_action=show`. It works
+    when Roundcube reads the same IMAP store (same UIDs) as we do; confirm live in Phase 2.
+    """
+    if not base_url or not uid:
+        return None
+    query = urlencode(
+        {"_task": "mail", "_mbox": folder, "_uid": uid, "_action": "show"}, quote_via=quote
+    )
+    return f"{base_url.rstrip('/')}/?{query}"
 
 
 def translate_error(exc: BaseException) -> ConnectorError:
@@ -45,7 +88,12 @@ def translate_error(exc: BaseException) -> ConnectorError:
     # TimeoutError is a subclass of OSError, so test it first.
     if isinstance(exc, TimeoutError | socket.timeout):
         return ConnectorError("timeout", _TIMEOUT)
-    if isinstance(exc, OSError):  # DNS failure, refused, unreachable network, TLS failure
+    # TLS problems are OSErrors too, but "connect to the VPN" would be the wrong advice.
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return ConnectorError("unreachable", _CERT)
+    if isinstance(exc, ssl.SSLError):
+        return ConnectorError("unreachable", _TLS)
+    if isinstance(exc, OSError):  # DNS failure, refused, unreachable network
         return ConnectorError("unreachable", _UNREACHABLE)
     return ConnectorError("unreachable", _SERVER)
 
@@ -69,7 +117,10 @@ class SearchRefused(Exception):
 class ReadOnlyMailbox:
     def __init__(self, settings: Settings) -> None:
         self._conn = IMAP4_SSL(
-            settings.imap_host, settings.imap_port, timeout=settings.imap_timeout_s
+            settings.imap_host,
+            settings.imap_port,
+            ssl_context=imap_ssl_context(),
+            timeout=settings.imap_timeout_s,
         )
 
     def login(self, username: str, password: str) -> None:
@@ -180,8 +231,14 @@ def _scan(
         mails: list[ParsedMail] = []
         for i in range(0, len(newest), FETCH_BATCH):
             for raw in box.fetch_peek(newest[i : i + FETCH_BATCH]):
+                link = webmail_link(settings.webmail_url, settings.imap_folder, raw.uid)
                 mails.append(
-                    parse_message(raw.header + raw.text, uid=raw.uid, folder=settings.imap_folder)
+                    parse_message(
+                        raw.header + raw.text,
+                        uid=raw.uid,
+                        folder=settings.imap_folder,
+                        open_url=link,
+                    )
                 )
         if query and client_filter:
             mails = [m for m in mails if matches_query(m, query)]

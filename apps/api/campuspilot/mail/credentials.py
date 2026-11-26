@@ -21,6 +21,15 @@ class Credentials:
     password: str = field(repr=False)  # repr=False: never shows up in logs or tracebacks
 
 
+def normalise_username(username: str) -> str:
+    """IITB's IMAP login is the LDAP id, the part before @iitb.ac.in. Students often type the
+    whole address, so drop that suffix (and stray spaces). Other domains are left as typed."""
+    name = username.strip()
+    if name.lower().endswith("@iitb.ac.in"):
+        name = name[: -len("@iitb.ac.in")]
+    return name
+
+
 def load() -> Credentials | None:
     username = keychain.get_secret(USERNAME_ENTRY)
     password = keychain.get_secret(PASSWORD_ENTRY)

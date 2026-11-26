@@ -178,14 +178,15 @@ async def mail_login(req: ConnectorLoginRequest) -> ConnectorStatus:
     settings = get_settings()
     if settings.connectors_demo:
         return await mail_status()  # nothing to log in to; never store anything in demo mode
+    username = credentials.normalise_username(req.username)
     try:
-        await imap_client.check_login(settings, req.username, req.password)
+        await imap_client.check_login(settings, username, req.password)
     except ConnectorError as exc:
         _record(exc if exc.code != "auth_failed" else None)
         raise
-    credentials.save(req.username, req.password)
+    credentials.save(username, req.password)
     _record(None)
-    return ConnectorStatus(name="webmail", enabled=True, state="connected", account=req.username)
+    return ConnectorStatus(name="webmail", enabled=True, state="connected", account=username)
 
 
 def mail_logout() -> ConnectorStatus:

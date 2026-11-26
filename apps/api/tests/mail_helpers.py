@@ -149,8 +149,8 @@ def install_fake_imap(monkeypatch, server: FakeImap) -> list[dict]:
     """Make the mail module use `server`. Returns the list of constructor calls."""
     calls: list[dict] = []
 
-    def factory(host: str, port: int, timeout: float | None = None) -> FakeImap:
-        calls.append({"host": host, "port": port, "timeout": timeout})
+    def factory(host: str, port: int, ssl_context=None, timeout: float | None = None) -> FakeImap:
+        calls.append({"host": host, "port": port, "timeout": timeout, "ssl_context": ssl_context})
         return server
 
     monkeypatch.setattr(imap_client, "IMAP4_SSL", factory)

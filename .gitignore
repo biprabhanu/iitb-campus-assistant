@@ -271,3 +271,6 @@ client_secret*.json
 .campuspilot/
 *.eml
 !data/fixtures/mail/*.eml
+
+# Claude Code agent worktrees (local only)
+.claude/worktrees/

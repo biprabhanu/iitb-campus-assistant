@@ -67,7 +67,9 @@ async def test_connection_settings_and_timeout_are_used(monkeypatch) -> None:
     get_settings.cache_clear()
     calls = install_fake_imap(monkeypatch, _server())
     await scan_mail(get_settings(), "user", "secret-pw", days=3)
-    assert calls == [{"host": "imap.example.invalid", "port": 1993, "timeout": 7.0}]
+    assert [{k: v for k, v in c.items() if k != "ssl_context"} for c in calls] == [
+        {"host": "imap.example.invalid", "port": 1993, "timeout": 7.0}
+    ]
 
 
 async def test_scans_only_the_newest_max_scan_mails(monkeypatch) -> None:
