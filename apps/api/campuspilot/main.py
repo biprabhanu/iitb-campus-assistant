@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from campuspilot.api.errors import ApiError
 from campuspilot.api.middleware import LimitsAndLogMiddleware
-from campuspilot.api.routes import ApiError, router
-from campuspilot.api.sse import RateLimiter
-from campuspilot.config import get_settings
+from campuspilot.api.ratelimit import RateLimiter
+from campuspilot.api.routes import router
+from campuspilot.config import Settings, get_settings
 
 log = logging.getLogger("campuspilot")
 
@@ -39,7 +45,12 @@ def _json_error(status: int, code: str, message: str) -> JSONResponse:
 
 
 async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-    return _json_error(exc.status, exc.code, exc.message)
+    payload: dict[str, object] = {"code": exc.code, "message": exc.message}
+    headers = {}
+    if exc.retry_after_s is not None:
+        payload["retry_after_s"] = exc.retry_after_s
+        headers["Retry-After"] = str(exc.retry_after_s)
+    return JSONResponse(payload, status_code=exc.status, headers=headers)
 
 
 async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -54,22 +65,66 @@ async def _unexpected_error(_: Request, exc: Exception) -> JSONResponse:
     return _json_error(500, "INTERNAL", "Something went wrong on our side. Please try again.")
 
 
+CORS_HEADERS = [
+    "Content-Type",
+    "X-LLM-Provider",
+    "X-LLM-Key",
+    "X-LLM-Model",
+    "X-Moodle-Token",
+    "X-Moodle-Ical-Url",
+]
+
+
+@dataclass
+class IndexState:
+    """Which index the API serves: kind is release / local / fallback / missing."""
+
+    kind: str
+    version: str | None = None
+
+
+def local_index_info(settings: Settings) -> IndexState:
+    return IndexState("local" if settings.campuspilot_db_path.exists() else "missing")
+
+
+async def _prepare_index(settings: Settings) -> Any:
+    """INDEX_SOURCE=release: download the newest index (slow, so off the event loop)."""
+    if settings.index_source != "release":
+        return local_index_info(settings)
+    try:
+        from campuspilot.index_release import prepare_index  # lazy: only needed when hosted
+
+        return await asyncio.to_thread(prepare_index, settings)
+    except Exception as exc:  # any failure: serve without an index rather than crash
+        log.error("index download failed: %s", type(exc).__name__)
+        return IndexState("missing")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    app.state.index_info = await _prepare_index(get_settings())
+    yield
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="CampusPilot API", docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_min)
+    app = FastAPI(
+        lifespan=_lifespan, title="CampusPilot API", docs_url=None, redoc_url=None, openapi_url=None
+    )
+    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_min, settings.rate_limit_per_day)
+    app.state.index_info = local_index_info(settings)
 
     app.add_exception_handler(ApiError, _api_error)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _unexpected_error)
 
-    app.add_middleware(LimitsAndLogMiddleware)
+    app.add_middleware(LimitsAndLogMiddleware, max_body=settings.max_body_bytes)
     # Added last = outermost, so CORS headers also appear on 413/429 responses.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=settings.all_cors_origins,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type"],
+        allow_headers=CORS_HEADERS,
     )
     app.include_router(router)
     return app

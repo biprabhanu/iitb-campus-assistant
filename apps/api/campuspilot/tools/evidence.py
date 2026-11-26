@@ -158,6 +158,30 @@ class EvidenceStore:
         return [chunk_id for e in self.items for chunk_id in e.chunk_ids]
 
 
+@dataclass
+class EvidenceBudget:
+    """Hosted mode: students are on small free tiers, so keep the evidence short."""
+
+    max_chunks: int
+    max_chars: int
+    used_chunks: int = 0
+    used_chars: int = 0
+
+    def fit(self, items: list[Evidence]) -> list[Evidence]:
+        """Keep the first items that fit; cut the last one's text to the space left."""
+        kept: list[Evidence] = []
+        for item in items:
+            room = self.max_chars - self.used_chars
+            if self.used_chunks >= self.max_chunks or room <= 0:
+                break
+            if len(item.text) > room:
+                item.text = item.text[:room].rstrip() + "..."
+            self.used_chunks += 1
+            self.used_chars += len(item.text)
+            kept.append(item)
+        return kept
+
+
 # ---------- converters: tool output -> evidence (+ an optional note) ----------
 
 ToolEvidence = tuple[list[Evidence], str]

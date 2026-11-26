@@ -39,7 +39,7 @@ def _tool_reply() -> dict:
 @respx.mock
 async def test_chat_parses_tool_calls_and_sends_expected_payload() -> None:
     route = respx.post(CHAT_URL).respond(json=_tool_reply())
-    tools = tool_schemas(offered_tools("live", False))
+    tools = tool_schemas(offered_tools())
     reply = await OllamaClient().chat([{"role": "user", "content": "hi"}], tools)
 
     assert reply.tool_calls[0].name == "search_campus_docs"
@@ -113,17 +113,15 @@ async def test_list_models_offline() -> None:
 
 
 def test_tool_schemas_come_from_input_models() -> None:
-    schemas = {s["function"]["name"]: s for s in tool_schemas(offered_tools("live", False))}
+    schemas = {s["function"]["name"]: s for s in tool_schemas(offered_tools())}
     assert set(schemas) >= {"search_campus_docs", "ask_clarification", "get_my_deadlines"}
     params = schemas["search_campus_docs"]["function"]["parameters"]
     assert "query" in params["properties"] and "title" not in params
 
 
-def test_moodle_tools_hidden_in_fallback_without_consent() -> None:
-    hidden = {t.name for t in offered_tools("fallback", False)}
-    assert "get_my_deadlines" not in hidden and "search_campus_docs" in hidden
-    assert "get_my_deadlines" in {t.name for t in offered_tools("fallback", True)}
-    assert "get_my_deadlines" in {t.name for t in offered_tools("live", False)}
+def test_moodle_tools_are_always_offered() -> None:
+    # The model only routes; Moodle results never go back to it (CONTRACT §10.4).
+    assert "get_my_deadlines" in {t.name for t in offered_tools()}
 
 
 @respx.mock

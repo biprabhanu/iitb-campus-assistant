@@ -57,8 +57,7 @@ PROVIDERS: dict[str, Provider] = {
         key_url="https://aistudio.google.com/app/apikey",
         free_tier=True,
         note=(
-            "Google's free tier may use your prompts to improve its products; "
-            "Groq is recommended."
+            "Google's free tier may use your prompts to improve its products; Groq is recommended."
         ),
     ),
     "openai": Provider(

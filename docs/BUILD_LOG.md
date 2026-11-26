@@ -39,3 +39,4 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Rate limits 20/min + 400/day per IP in both modes (was 30/min local); body 8 KB hosted, 32 KB local.
 - Index is a release asset with SHA-256 verification; any failure falls back to the fixture index (the demo builder from the fresh-clone fix), reported as `index:"fallback"`.
 - No Moodle Keychain endpoints in hosted mode (404 NOT_AVAILABLE); `/v1/moodle/check` verifies header credentials without storing them.
+- Phase 1 backend decisions accepted: mixed Moodle+docs turn keeps answer_kind answer/abstain (template streamed first); `/v1/llm/check` is 404 NOT_AVAILABLE in local mode; check status codes 401/429/504/502; 429 bodies carry `retry_after_s` + a `Retry-After` header; the clarify pre-check stays on in hosted mode (one cheap router call), revisit after the Groq rate-limit probe.

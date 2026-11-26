@@ -111,14 +111,11 @@ async def test_unanswerable_question_abstains_with_office_links(monkeypatch) -> 
 
 async def test_whats_due_this_week_returns_moodle_sources_with_due_dates(monkeypatch) -> None:
     install_fake_tools(monkeypatch)
-    llm = ScriptedLLM(
-        [LLMReply(tool_calls=[call("get_my_deadlines")]), LLMReply(content="")],
-        stream_pieces=["Quiz 2 for IE624 is due soon [M1]."],
-    )
+    llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_deadlines")])])
     events, _ = await run(llm, "What's due this week?")
     moodle = [s for s in sources_of(events) if s["kind"] == "moodle"]
     assert moodle and moodle[0]["due_at"] and moodle[0]["demo"] is True
-    assert done_of(events)["citations"] == ["M1"]
+    assert done_of(events)["answer_kind"] == "moodle"
 
 
 async def test_conflicting_tier1_and_tier2_sources_are_both_shown_and_cited(monkeypatch) -> None:

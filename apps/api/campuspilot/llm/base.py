@@ -21,6 +21,23 @@ class ModelTimeout(LLMError):
     """The model server was reached but did not answer in time."""
 
 
+class ProviderError(LLMError):
+    """A hosted-mode provider (Groq, Gemini...) refused or failed. Safe to show to students.
+
+    `code` is one of the PROVIDER_* error codes. Neither the message nor the attributes ever
+    contain the student's API key.
+    """
+
+    def __init__(
+        self, code: str, provider: str, message: str, retry_after_s: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.provider = provider
+        self.message = message
+        self.retry_after_s = retry_after_s
+
+
 @dataclass
 class ToolCall:
     name: str

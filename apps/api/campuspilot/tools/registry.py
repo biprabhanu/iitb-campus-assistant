@@ -155,10 +155,10 @@ _SPECS = [
 TOOLS: dict[str, ToolSpec] = {spec.name: spec for spec in _SPECS}
 
 
-def offered_tools(mode: str, allow_personal_data_to_cloud: bool) -> list[ToolSpec]:
-    """Tools the model may see. Moodle is hidden from a cloud fallback without consent."""
-    hide_moodle = mode == "fallback" and not allow_personal_data_to_cloud
-    return [t for t in TOOLS.values() if not (hide_moodle and t.kind == "moodle")]
+def offered_tools() -> list[ToolSpec]:
+    """Tools the model may see. Moodle tools are always offered: the model only routes, and
+    Moodle results never go back to it (CONTRACT §10.4)."""
+    return list(TOOLS.values())
 
 
 def _strip_titles(node: Any) -> Any:

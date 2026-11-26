@@ -15,14 +15,15 @@ import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from pydantic import ValidationError
 
 from campuspilot.agent.citations import CitationFilter
 from campuspilot.agent.clarify import needs_clarification
-from campuspilot.agent.prompts import build_system_prompt
+from campuspilot.agent.moodle_answer import moodle_sentence
+from campuspilot.agent.prompts import build_short_prompt, build_system_prompt
 from campuspilot.config import Settings, get_settings
 from campuspilot.llm.base import (
     LLMClient,
@@ -31,10 +32,12 @@ from campuspilot.llm.base import (
     Message,
     ModelOffline,
     ModelTimeout,
+    ProviderError,
     ToolCall,
 )
 from campuspilot.schemas.chat import (
     ChatRequest,
+    ChatTurn,
     DoneEvent,
     ErrorEvent,
     FollowUp,
@@ -43,7 +46,7 @@ from campuspilot.schemas.chat import (
     ToolEvent,
 )
 from campuspilot.schemas.tools import GetOfficialLinkInput, GetOfficialLinkOutput
-from campuspilot.tools.evidence import EvidenceStore
+from campuspilot.tools.evidence import EvidenceBudget, EvidenceStore
 from campuspilot.tools.registry import (
     TOOLS,
     AskClarificationInput,
@@ -71,6 +74,7 @@ class RunTrace:
     request_id: str
     model: str = ""
     mode: str = ""
+    provider: str = ""  # hosted: the provider id, never the key
     tools: list[str] = field(default_factory=list)
     chunk_ids: list[int] = field(default_factory=list)
     error_code: str | None = None
@@ -84,6 +88,10 @@ class ToolOutcome:
     limitation: str | None = None
     links: list[OfficeLink] = field(default_factory=list)
     follow_up: FollowUp | None = None
+    moodle_text: str | None = None  # the template sentence for a Moodle tool (success or failure)
+
+
+MOODLE_HISTORY_TEXT = "[Moodle results were shown to the user]"
 
 
 # ---------- small helpers ----------
@@ -167,38 +175,57 @@ def _note(text: str) -> str:
 # ---------- running one tool ----------
 
 
+def _failed(spec: ToolSpec, note: str, message: str) -> ToolOutcome:
+    """A tool that did not finish. A failed Moodle tool tells the student itself."""
+    if spec.kind == "moodle":
+        return ToolOutcome(False, _note(note), moodle_text=message)
+    return ToolOutcome(False, _note(note), message)
+
+
 async def _execute_tool(
-    spec: ToolSpec, arguments: dict[str, Any], store: EvidenceStore, timeout_s: float
+    spec: ToolSpec,
+    arguments: dict[str, Any],
+    store: EvidenceStore,
+    timeout_s: float,
+    budget: EvidenceBudget | None = None,
 ) -> ToolOutcome:
     try:
         args = spec.input_model.model_validate(arguments)
     except ValidationError as exc:
         fields = ", ".join(sorted({str(e["loc"][0]) if e["loc"] else "?" for e in exc.errors()}))
-        note = _note(f"Tool {spec.name} was called with invalid arguments (check: {fields}).")
-        return ToolOutcome(False, note, f"A tool call had invalid arguments ({spec.name}).")
+        note = f"Tool {spec.name} was called with invalid arguments (check: {fields})."
+        return _failed(spec, note, f"A tool call had invalid arguments ({spec.name}).")
     try:
         output = await asyncio.wait_for(spec.run(args), timeout=timeout_s)
     except TimeoutError:
-        return ToolOutcome(False, _note(f"{spec.name} timed out."), f"{spec.label} timed out.")
+        return _failed(spec, f"{spec.name} timed out.", f"{spec.label} timed out.")
     except ToolFailure as exc:
-        return ToolOutcome(False, _note(str(exc)), str(exc))
+        return _failed(spec, str(exc), str(exc))
     except Exception as exc:
         log.warning(
             "tool %s failed: %s", spec.name, type(exc).__name__
         )  # no details: may be private
-        return ToolOutcome(
-            False, _note(f"{spec.name} is unavailable right now."), f"{spec.label} failed."
-        )
-    return _success_outcome(spec, output, store)
+        return _failed(spec, f"{spec.name} is unavailable right now.", f"{spec.label} failed.")
+    return _success_outcome(spec, args, output, store, budget)
 
 
-def _success_outcome(spec: ToolSpec, output: Any, store: EvidenceStore) -> ToolOutcome:
+def _success_outcome(
+    spec: ToolSpec, args: Any, output: Any, store: EvidenceStore, budget: EvidenceBudget | None
+) -> ToolOutcome:
     if isinstance(output, AskClarificationInput):
         return ToolOutcome(
             True, "", follow_up=FollowUp(question=output.question, options=output.options)
         )
     assert spec.to_evidence is not None
     items, note = spec.to_evidence(output)
+    if spec.kind == "moodle":
+        # The cards go to the UI; the model only learns how many there were.
+        added = store.add(items)
+        text = moodle_sentence(spec.name, args, output, datetime.now(UTC))
+        content = f"[Moodle results shown to the user: {len(added)} items]"
+        return ToolOutcome(True, content, moodle_text=text)
+    if budget is not None:
+        items = budget.fit(items)
     added = store.add(items)
     parts = [item.to_block() for item in added] or ["No matching results found."]
     if note:
@@ -260,6 +287,8 @@ async def run_chat(
     try:
         async for event in _run(request, llm, trace, settings, today or date.today(), started):
             yield event
+    except ProviderError as exc:
+        yield _error(trace, exc.code, exc.message, exc.provider, exc.retry_after_s)
     except ModelOffline:
         yield _error(trace, "MODEL_OFFLINE", OFFLINE_TEXT)
     except ModelTimeout:
@@ -272,9 +301,21 @@ async def run_chat(
     trace.latency_ms = int((time.monotonic() - started) * 1000)
 
 
-def _error(trace: RunTrace, code: str, message: str) -> Event:
+def _error(
+    trace: RunTrace,
+    code: str,
+    message: str,
+    provider: str | None = None,
+    retry_after_s: int | None = None,
+) -> Event:
     trace.error_code = code
-    return "error", ErrorEvent(code=code, message=message).model_dump(mode="json")  # type: ignore[arg-type]
+    event = ErrorEvent(
+        code=code,  # type: ignore[arg-type]
+        message=message,
+        provider=provider,
+        retry_after_s=retry_after_s,
+    )
+    return "error", event.model_dump(mode="json", exclude_none=True)
 
 
 async def _run(
@@ -288,7 +329,15 @@ async def _run(
     store = EvidenceStore()
     limitations: list[str] = []
     office_links: list[OfficeLink] = []
-    specs = offered_tools(llm.mode, settings.allow_personal_data_to_cloud)
+    hosted = settings.hosted
+    budget = (
+        EvidenceBudget(
+            settings.hosted_max_evidence_chunks, settings.hosted_evidence_token_budget * 4
+        )
+        if hosted
+        else None
+    )
+    specs = offered_tools()
     precheck_on = settings.clarify_precheck and llm.mode != "mock"
     if precheck_on:
         # The pre-check owns the "ask or not" decision; offering ask_clarification to the
@@ -297,13 +346,18 @@ async def _run(
     by_name = {s.name: s for s in specs}
     schemas = tool_schemas(specs)
 
-    history = request.history[-settings.max_history_turns :]
-    system = build_system_prompt(today, clarify_tool="ask_clarification" in by_name)
+    keep = settings.hosted_max_history_turns if hosted else settings.max_history_turns
+    history = [_hide_moodle(t) for t in request.history[-keep:]]
+    if hosted:
+        system = build_short_prompt(today)
+    else:
+        system = build_system_prompt(today, clarify_tool="ask_clarification" in by_name)
     messages: list[Message] = [{"role": "system", "content": system}]
     messages += [{"role": t.role, "content": t.content} for t in history]
     messages.append({"role": "user", "content": request.message})
 
     executed = 0
+    moodle_texts: list[str] = []
     final_reply: LLMReply | None = None
     follow_up: FollowUp | None = None
 
@@ -362,9 +416,13 @@ async def _run(
                 continue
             trace.tools.append(spec.name)
             yield "tool", ToolEvent(name=spec.name, label=spec.label, state="start").model_dump()
-            outcome = await _execute_tool(spec, call.arguments, store, settings.tool_timeout_s)
+            outcome = await _execute_tool(
+                spec, call.arguments, store, settings.tool_timeout_s, budget
+            )
             state = "done" if outcome.ok else "error"
             yield "tool", ToolEvent(name=spec.name, label=spec.label, state=state).model_dump()
+            if outcome.moodle_text:
+                moodle_texts.append(outcome.moodle_text)
             if outcome.limitation:
                 limitations.append(outcome.limitation)
             office_links.extend(outcome.links)
@@ -394,7 +452,7 @@ async def _run(
             "tool",
             ToolEvent(name=link_spec.name, label=link_spec.label, state="start").model_dump(),
         )
-        outcome = await _execute_tool(link_spec, args, store, settings.tool_timeout_s)
+        outcome = await _execute_tool(link_spec, args, store, settings.tool_timeout_s, budget)
         state = "done" if outcome.ok else "error"
         yield (
             "tool",
@@ -426,8 +484,18 @@ async def _run(
         yield "done", done.model_dump(mode="json")
         return
 
+    doc_ran = any(TOOLS[name].kind == "doc" for name in trace.tools if name in TOOLS)
+    if moodle_texts:
+        text = " ".join(moodle_texts)
+        for piece in chunk_text(text if not doc_ran else text + "\n\n"):
+            yield "token", {"text": piece}
+        if not doc_ran:  # Moodle only: our sentence is the whole answer, no model call
+            done = DoneEvent(limitations=limitations, answer_kind="moodle", latency_ms=_ms(started))
+            yield "done", done.model_dump(mode="json")
+            return
+
     abstain, cites = AbstainFilter(), CitationFilter(store.ids())
-    emitted = False
+    emitted = bool(moodle_texts)
     async for piece in _answer_pieces(llm, messages, final_reply):
         text = cites.feed(abstain.feed(piece))
         if text:
@@ -470,6 +538,13 @@ async def _answer_pieces(
         return
     async for piece in llm.stream(messages):
         yield piece
+
+
+def _hide_moodle(turn: ChatTurn) -> ChatTurn:
+    """A past answer built from Moodle data must not reach the model."""
+    if turn.kind == "moodle":
+        return turn.model_copy(update={"content": MOODLE_HISTORY_TEXT})
+    return turn
 
 
 def _ms(started: float) -> int:

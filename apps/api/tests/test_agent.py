@@ -196,54 +196,48 @@ async def test_tool_timeout_is_reported(monkeypatch) -> None:
 
 async def test_moodle_deadlines_become_m_sources_with_due_dates(monkeypatch) -> None:
     install_fake_tools(monkeypatch)
-    llm = ScriptedLLM(
-        [
-            LLMReply(tool_calls=[call("get_my_deadlines")]),
-            LLMReply(content="Quiz 2 is due soon [M1]."),
-        ]
-    )
+    llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_deadlines")])])
     events, _ = await run(llm, "what is due this week?")
     source = next(d for n, d in events if n == "sources")[0]
     assert source["id"] == "M1" and source["kind"] == "moodle" and source["demo"] is True
     assert source["course"] == "IE624" and source["due_at"].startswith("2026-11-28")
-    assert done_of(events)["citations"] == ["M1"]
+    done = done_of(events)
+    assert done["answer_kind"] == "moodle" and done["citations"] == []
+    text = answer_text(events)
+    assert text.startswith("You have 1 deadline in the next 7 days.") and "IE624 Quiz 2" in text
+    assert "These are demo deadlines." in text
+    assert llm.stream_calls == 0 and len(llm.chat_calls) == 1  # no final model call
+    assert "Quiz 2" not in str(llm.chat_calls)  # nothing from Moodle went to the model
 
 
 async def test_moodle_error_gives_tool_error_and_evidence_note(monkeypatch) -> None:
     install_fake_tools(monkeypatch, moodle_error="Moodle is not connected.")
-    llm = ScriptedLLM(
-        [
-            LLMReply(tool_calls=[call("get_my_deadlines")]),
-            LLMReply(content="I can't read Moodle right now."),
-        ]
-    )
+    llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_deadlines")])])
     events, _ = await run(llm, "deadlines?")
     assert ("get_my_deadlines", "error") in tool_states(events)
-    tool_msg = [m for m in llm.chat_calls[-1][0] if m["role"] == "tool"][0]
-    assert "Moodle is not connected." in tool_msg["content"]
-    assert "Moodle is not connected." in done_of(events)["limitations"]
+    assert answer_text(events) == "Moodle is not connected."
+    assert done_of(events)["answer_kind"] == "moodle"
 
 
-async def test_moodle_tools_hidden_in_fallback_without_consent(monkeypatch) -> None:
-    fakes = install_fake_tools(monkeypatch)
-    llm = ScriptedLLM(
-        [LLMReply(tool_calls=[call("get_my_deadlines")]), LLMReply(content="ok")], mode="fallback"
-    )
-    events, _ = await run(llm, "deadlines?")
-    offered = {t["function"]["name"] for t in llm.chat_calls[0][1]}
-    assert "get_my_deadlines" not in offered and "search_campus_docs" in offered
-    assert fakes.deadlines == []  # even if the model asks, it does not run
-
-
-async def test_moodle_tools_offered_in_fallback_with_consent(monkeypatch) -> None:
-    monkeypatch.setenv("ALLOW_PERSONAL_DATA_TO_CLOUD", "true")
-    from campuspilot.config import get_settings
-
-    get_settings.cache_clear()
+async def test_moodle_tools_offered_in_every_mode(monkeypatch) -> None:
     install_fake_tools(monkeypatch)
     llm = ScriptedLLM([LLMReply(content="ok")], mode="fallback")
     await run(llm)
     assert "get_my_deadlines" in {t["function"]["name"] for t in llm.chat_calls[0][1]}
+
+
+async def test_mixed_turn_streams_template_then_llm_answer_over_docs(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("get_my_deadlines"), call("search_campus_docs", query="x")])],
+        stream_pieces=["Classes begin on 3 August [S1]."],
+    )
+    events, _ = await run(llm, "deadlines and calendar?")
+    text = answer_text(events)
+    assert text.index("You have 1 deadline") < text.index("Classes begin")
+    tool_msgs = [m["content"] for m in llm.stream_messages if m["role"] == "tool"]
+    assert "[Moodle results shown to the user: 1 items]" in tool_msgs
+    assert done_of(events)["citations"] == ["S1"]
 
 
 # ---------- clarify and abstain ----------
@@ -341,7 +335,7 @@ async def test_mock_llm_rules_and_citations(monkeypatch) -> None:
     assert done_of(events)["citations"] == ["S1"]
 
     events, _ = await run(MockLLM(), "what is due this week?")
-    assert done_of(events)["citations"] == ["M1"]
+    assert done_of(events)["answer_kind"] == "moodle"
 
     events, _ = await run(MockLLM(), "I want to change my room")
     assert done_of(events)["answer_kind"] == "clarify"
