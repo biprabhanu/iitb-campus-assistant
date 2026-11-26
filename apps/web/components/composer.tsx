@@ -13,12 +13,16 @@ export function Composer({
   streaming,
   focusKey,
   notice,
+  disabled = false,
+  placeholder = "Ask about campus life, rules or deadlines",
 }: {
   onSend: (text: string) => void;
   onStop: () => void;
   streaming: boolean;
   focusKey: string | null; // changes when the user switches chat, so we refocus
   notice?: React.ReactNode; // slim notice shown just above the box (e.g. "Model offline")
+  disabled?: boolean; // hosted mode before a key is saved
+  placeholder?: string;
 }) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -38,12 +42,12 @@ export function Composer({
 
   function submit() {
     const text = value.trim();
-    if (!text || streaming) return;
+    if (!text || streaming || disabled) return;
     onSend(text);
     setValue("");
   }
 
-  const canSend = value.trim().length > 0;
+  const canSend = value.trim().length > 0 && !disabled;
 
   return (
     // Solid background, plus a 32 px fade above it so messages never run into the box.
@@ -66,7 +70,8 @@ export function Composer({
             rows={1}
             value={value}
             maxLength={MAX_CHARS}
-            placeholder="Ask about campus life, rules or deadlines"
+            placeholder={placeholder}
+            disabled={disabled}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -74,7 +79,7 @@ export function Composer({
                 submit();
               }
             }}
-            className="scroll-thin max-h-[200px] min-h-[40px] flex-1 resize-none self-center bg-transparent py-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none"
+            className="scroll-thin max-h-[200px] min-h-[40px] flex-1 resize-none self-center bg-transparent py-2 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed"
           />
           {streaming ? (
             <button

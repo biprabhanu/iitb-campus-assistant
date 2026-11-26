@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "screenshots": "rm -f ../../docs/screenshots/*.png && SCREENSHOTS=1 playwright test --project=screenshots"
+    "screenshots": "SCREENSHOTS=1 playwright test --project=screenshots"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.3.1",

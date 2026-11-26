@@ -5,13 +5,21 @@
 // Special switches (URL params or NEXT_PUBLIC_* env, see lib/config.ts):
 //   ?mockOffline=1  every request fails with MODEL_OFFLINE and /v1/status says offline
 //   ?mockWake=1     the first token takes ~5 s (shows "Waking up the model")
+//   ?mockHosted=1   pretend the API is in hosted (bring-your-own-key) mode: key card, Settings, provider pill
+//   ?mockError=CODE every chat request fails with that code, e.g. PROVIDER_RATE_LIMITED (hosted codes carry a provider)
+//   ?mockCold=1     the server is "asleep" for about a minute (?mockCold=fail: it never wakes)
 //   ?mockHold=tool  freezes on the first step; ?mockHold=text freezes after a few words (screenshots)
 //
 // The answer text here is sample content only. It never states real policy facts, dates or rules;
 // the source cards use real registry URLs but generic snippets.
-import { mockHold, mockOffline, mockWake } from "./config";
+import { mockCold, mockError, mockHold, mockHosted, mockOffline, mockWake } from "./config";
+import type { LlmCreds, MoodleCreds } from "./credentials";
+import { httpError } from "./errors";
+import { FALLBACK_PROVIDERS } from "./providers";
+import { relativeDue } from "./utils";
 import type {
   ChatRequest,
+  LLMCheckResponse,
   DoneEvent,
   MoodleTokenRequest,
   MoodleTokenResponse,
@@ -115,9 +123,9 @@ function scriptFor(message: string): Script {
         mk(5, "IE624", "Project proposal revision", istEvening(5, 18, 0)),
         mk(6, "IE611", "Midsem feedback form closes", istEvening(6, 23, 59), "quiz"),
       ],
-      text:
-        "Here are your upcoming deadlines. The soonest is *Assignment 3: Prototype report* in IE624 [M1].\n\nThese are sample deadlines from the demo Moodle, shown so you can see how the cards look.",
-      done: { citations: ["M1", "M2", "M3", "M4", "M5", "M6"], freshness: "unknown" },
+      // answer_kind "moodle": a template sentence written by the server, no citations (CONTRACT §10.4).
+      text: `You have 6 deadlines in the next 7 days. The nearest is IE624 Assignment 3: Prototype report, due ${relativeDue(first).text}.`,
+      done: { citations: [], freshness: "unknown", answer_kind: "moodle" },
     };
   }
 
@@ -200,10 +208,60 @@ function chunkText(text: string): string[] {
   return text.match(/\S+\s*|\s+/g) ?? [text];
 }
 
-export async function* mockChatStream(req: ChatRequest, signal: AbortSignal): AsyncGenerator<SSEEvent> {
+const ERROR_TEXT: Record<string, string> = {
+  MODEL_OFFLINE: "The CampusPilot model is offline right now. Check the tunnel (`ssh -fN passpoli-llm`) and try again.",
+  TIMEOUT: "The model took too long to answer. Please try again.",
+  BAD_REQUEST: "That request wasn't valid. Please try again.",
+  RATE_LIMITED: "You're sending requests too fast. Please wait a moment.",
+  INTERNAL: "Something went wrong on the server. Please try again.",
+  MODEL_KEY_REQUIRED: "Add your AI key in Settings to start chatting.",
+  PROVIDER_KEY_REJECTED: "Your {p} key was rejected. Check it in Settings.",
+  PROVIDER_RATE_LIMITED: "{p} says you've hit your free limit; try again in a minute.",
+  PROVIDER_TIMEOUT: "{p} took too long to answer. Please try again.",
+  PROVIDER_ERROR: "{p} returned an error. Please try again.",
+  NOT_AVAILABLE: "That isn't available in the hosted version.",
+};
+
+export async function* mockChatStream(req: ChatRequest, signal: AbortSignal, auth?: { llm: LlmCreds | null; moodle: MoodleCreds | null }): AsyncGenerator<SSEEvent> {
   const started = Date.now();
   const requestId = Math.random().toString(16).slice(2, 8);
-  yield { event: "status", data: { request_id: requestId, model: MODEL, mode: "mock" } };
+  const hosted = mockHosted();
+  const providerId = auth?.llm?.provider ?? "groq";
+  const providerName = FALLBACK_PROVIDERS.find((p) => p.id === providerId)?.label ?? providerId;
+
+  // Hosted without a key: the server answers HTTP 401 before any stream starts.
+  if (hosted && !auth?.llm && !mockError()) {
+    await sleep(150, signal);
+    yield { event: "error", data: httpError(401, { code: "MODEL_KEY_REQUIRED", message: ERROR_TEXT.MODEL_KEY_REQUIRED }) };
+    return;
+  }
+
+  // ?mockError=CODE. Three codes go through the HTTP mapping on purpose (the real 401/429 path).
+  const forced = mockError();
+  if (forced) {
+    await sleep(250, signal);
+    if (signal.aborted) return;
+    const message = (ERROR_TEXT[forced] ?? ERROR_TEXT.INTERNAL).replace("{p}", providerName);
+    const wait = forced === "PROVIDER_RATE_LIMITED" || forced === "RATE_LIMITED" ? 42 : undefined;
+    if (forced === "MODEL_KEY_REQUIRED") yield { event: "error", data: httpError(401, { code: forced, message }) };
+    else if (forced === "RATE_LIMITED") yield { event: "error", data: httpError(429, { code: forced, message, retry_after_s: wait }) };
+    else {
+      const providerError = forced.startsWith("PROVIDER_");
+      yield {
+        event: "error",
+        data: {
+          code: forced as never,
+          message,
+          provider: providerError ? providerId : null,
+          retry_after_s: wait ?? null,
+          at: Date.now(),
+        },
+      };
+    }
+    return;
+  }
+
+  yield { event: "status", data: { request_id: requestId, model: hosted ? "byok" : MODEL, mode: hosted ? "byok" : "mock" } };
   await sleep(350, signal);
   if (signal.aborted) return;
 
@@ -262,9 +320,58 @@ export async function* mockChatStream(req: ChatRequest, signal: AbortSignal): As
 
 let mockMoodle: MoodleTokenResponse["mode"] = "none";
 
+let coldStart = 0;
+
+/** GET /health in mock mode. With ?mockCold the "server" stays asleep (about a minute, or forever for =fail). */
+export async function mockPing(signal?: AbortSignal): Promise<boolean> {
+  const cold = mockCold();
+  if (!cold) return true;
+  if (!coldStart) coldStart = Date.now();
+  await new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, 700);
+    signal?.addEventListener("abort", () => (clearTimeout(t), resolve()), { once: true });
+  });
+  return cold === "wake" && Date.now() - coldStart > 60_000;
+}
+
+/** Mock of POST /v1/llm/check. A key containing "bad" is rejected, one containing "slow" hits the rate limit. */
+export async function mockCheckLlm(creds: LlmCreds): Promise<LLMCheckResponse> {
+  await new Promise((r) => setTimeout(r, 700));
+  const name = FALLBACK_PROVIDERS.find((p) => p.id === creds.provider)?.label ?? creds.provider;
+  const model = creds.model ?? FALLBACK_PROVIDERS.find((p) => p.id === creds.provider)?.router_model ?? "";
+  if (/bad/i.test(creds.key)) return { ok: false, provider: creds.provider, model, code: "PROVIDER_KEY_REJECTED", message: `Your ${name} key was rejected. Check it in Settings.` };
+  if (/slow/i.test(creds.key)) return { ok: false, provider: creds.provider, model, code: "PROVIDER_RATE_LIMITED", message: `${name} says you've hit your free limit; try again in a minute.`, retry_after_s: 42 };
+  return { ok: true, provider: creds.provider, model };
+}
+
+/** Mock of POST /v1/moodle/check. A value containing "bad" is rejected. */
+export async function mockCheckMoodle(creds: MoodleCreds): Promise<MoodleTokenResponse> {
+  await new Promise((r) => setTimeout(r, 700));
+  if (/bad/i.test(creds.token ?? "") || /bad/i.test(creds.icalUrl ?? "")) {
+    return { ok: false, mode: "none", message: "Moodle didn't accept that token. Check it and try again." };
+  }
+  const mode = creds.icalUrl ? "ical" : "rest";
+  return { ok: true, mode, site_name: "IITB Moodle (mock)", user_fullname: mode === "rest" ? "Demo Student" : null, message: "Moodle accepted it (mock mode: nothing was saved)." };
+}
+
 export async function mockStatus(): Promise<StatusResponse> {
   await new Promise((r) => setTimeout(r, 150));
   const offline = mockOffline();
+  if (mockHosted()) {
+    return {
+      model_online: true,
+      model_loaded: true,
+      model: "byok",
+      moodle: "not_configured",
+      moodle_mode: "demo",
+      sources_indexed: 24,
+      mode: "byok",
+      deploy_mode: "hosted",
+      index: "fallback",
+      index_version: "fixtures",
+      providers: FALLBACK_PROVIDERS.map((p) => ({ ...p, tested: false })),
+    };
+  }
   return {
     model_online: !offline,
     model_loaded: !offline,
@@ -273,6 +380,7 @@ export async function mockStatus(): Promise<StatusResponse> {
     moodle_mode: mockMoodle === "none" ? "demo" : mockMoodle,
     sources_indexed: 24,
     mode: "mock",
+    deploy_mode: "local",
   };
 }
 

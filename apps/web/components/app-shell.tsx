@@ -1,21 +1,34 @@
 "use client";
 import { useCallback, useMemo, useState } from "react";
-import { AppActionsProvider } from "@/components/app-actions";
+import { AppActionsProvider, type SettingsSection } from "@/components/app-actions";
 import { ChatView } from "@/components/chat-view";
 import { Composer } from "@/components/composer";
 import { Header } from "@/components/header";
-import { OfflineNotice } from "@/components/offline-notice";
+import { KeyCard } from "@/components/key-card";
+import { HostedServerNotice, OfflineNotice } from "@/components/offline-notice";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChat } from "@/hooks/use-chat";
+import { useCredentials } from "@/hooks/use-credentials";
 import { useStatus } from "@/hooks/use-status";
+import { providerList } from "@/lib/providers";
 
 /** Wires the sidebar, header, message column, composer and settings together. */
 export function AppShell() {
-  const chat = useChat();
   const status = useStatus();
+  const creds = useCredentials();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("model");
+
+  // One build serves both: the server says whether it is local or hosted (the last answer is remembered).
+  // A server that is still asleep on first visit can only be a hosted one (a local API is never "asleep").
+  const hosted = status.deployMode === "hosted" || (status.deployMode === null && status.wake !== "ready");
+  const modeKnown = status.deployMode !== null || status.checked || status.wake !== "ready";
+  const providers = useMemo(() => providerList(status.status?.providers), [status.status?.providers]);
+  const auth = useMemo(() => ({ llm: creds.llm, moodle: creds.moodle }), [creds.llm, creds.moodle]);
+  const chat = useChat({ hosted, auth });
+  const needsKey = hosted && creds.loaded && !creds.llm;
   // null = "default": closed on mobile, open on desktop.
   const [sidebar, setSidebar] = useState<boolean | null>(null);
 
@@ -30,9 +43,17 @@ export function AppShell() {
 
   // On mobile, picking something closes the drawer.
   const closeMobile = () => setSidebar((s) => (s === true ? null : s));
-  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const openSettings = useCallback((section: SettingsSection = "model") => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
+  }, []);
 
-  const actions = useMemo(() => ({ openSettings }), [openSettings]);
+  const actions = useMemo(() => ({ openSettings, hosted, providers }), [openSettings, hosted, providers]);
+
+  // What the empty chat shows: nothing until we know the mode, the key card in hosted mode, else the suggestions.
+  let emptyContent: React.ReactNode;
+  if (!modeKnown || (hosted && !creds.loaded)) emptyContent = <div aria-hidden className="min-h-full" />;
+  else if (needsKey) emptyContent = <KeyCard providers={providers} onSave={(c, remember) => creds.saveLlm(c, remember)} initialRemember={creds.remember.llm} />;
 
   return (
     <TooltipProvider>
@@ -55,12 +76,21 @@ export function AppShell() {
           onRename={chat.renameChat}
           onDelete={chat.deleteChat}
           onOpenSettings={() => {
-            setSettingsOpen(true);
+            openSettings();
             closeMobile();
           }}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Header state={status} waking={chat.waking} onToggleSidebar={toggleSidebar} onOpenSettings={openSettings} />
+          <Header
+            state={status}
+            waking={chat.waking}
+            hosted={hosted}
+            llm={creds.llm}
+            moodle={creds.moodle}
+            providers={providers}
+            onToggleSidebar={toggleSidebar}
+            onOpenSettings={openSettings}
+          />
           <main className="flex min-h-0 flex-1 flex-col">
             <ChatView
               chatId={chat.activeId}
@@ -71,13 +101,22 @@ export function AppShell() {
               onSend={chat.send}
               onRegenerate={chat.regenerate}
               onFeedback={chat.setFeedback}
+              emptyContent={emptyContent}
             />
             <Composer
               onSend={chat.send}
               onStop={chat.stop}
               streaming={chat.isStreaming}
               focusKey={chat.activeId}
-              notice={<OfflineNotice state={status} onRetry={status.refresh} />}
+              disabled={needsKey}
+              placeholder={needsKey ? "Add your AI key above to start chatting" : undefined}
+              notice={
+                hosted || status.wake !== "ready" ? (
+                  <HostedServerNotice state={status} onRetryWake={status.retryWake} onRetryStatus={status.refresh} />
+                ) : (
+                  <OfflineNotice state={status} onRetry={status.refresh} />
+                )
+              }
             />
           </main>
         </div>
@@ -88,6 +127,14 @@ export function AppShell() {
         state={status}
         onRefreshStatus={status.refresh}
         onClearHistory={chat.clearAll}
+        hosted={hosted}
+        creds={creds}
+        providers={providers}
+        section={settingsSection}
+        onForgetAll={() => {
+          creds.forgetAll();
+          chat.clearAll();
+        }}
       />
       </AppActionsProvider>
     </TooltipProvider>

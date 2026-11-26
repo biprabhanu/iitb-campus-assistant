@@ -1,7 +1,10 @@
 "use client";
 // Cards drawn for special answer kinds: a clarifying question, an abstention and an error.
-import { ExternalLink, HelpCircle, RotateCw, ShieldQuestion, WifiOff, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Clock, ExternalLink, HelpCircle, KeyRound, RotateCw, ShieldQuestion, WifiOff, type LucideIcon } from "lucide-react";
+import { useAppActions } from "@/components/app-actions";
 import { Button } from "@/components/ui/button";
+import { useCountdown } from "@/hooks/use-countdown";
+import { providerLabel } from "@/lib/providers";
 import { cn } from "@/lib/utils";
 import type { ErrorEvent, FollowUp, OfficeLink } from "@/lib/types";
 
@@ -93,14 +96,51 @@ const FALLBACK_LINKS: OfficeLink[] = [
   { title: "Academic Office", url: "https://acad.iitb.ac.in", issuer: "IIT Bombay" },
 ];
 
-/** Friendly error state. MODEL_OFFLINE and network errors show helpful next steps. */
+interface ErrorLook {
+  title: string;
+  icon: LucideIcon;
+  /** Show a "Change key" button (hosted, when the student's key is the problem or the way out). */
+  changeKey?: "add" | "change";
+  /** Can the same request simply be sent again? */
+  retry: boolean;
+}
+
+/** Title, icon and buttons for each error code. `name` is the provider's label ("Groq"). */
+function lookFor(code: ErrorEvent["code"], name: string): ErrorLook {
+  switch (code) {
+    case "MODEL_KEY_REQUIRED":
+      return { title: "Add your AI key to start", icon: KeyRound, changeKey: "add", retry: false };
+    case "PROVIDER_KEY_REJECTED":
+      return { title: `${name} rejected your key`, icon: KeyRound, changeKey: "change", retry: false };
+    case "PROVIDER_RATE_LIMITED":
+      return { title: `You've hit ${name}'s limit`, icon: Clock, changeKey: "change", retry: true };
+    case "PROVIDER_TIMEOUT":
+      return { title: `${name} took too long`, icon: Clock, retry: true };
+    case "PROVIDER_ERROR":
+      return { title: `${name} had a problem`, icon: AlertTriangle, retry: true };
+    case "RATE_LIMITED":
+      return { title: "Too many requests", icon: Clock, retry: true };
+    case "MODEL_OFFLINE":
+    case "NETWORK":
+      return { title: "The assistant is offline", icon: WifiOff, retry: true };
+    default:
+      return { title: "Something went wrong", icon: AlertTriangle, retry: true };
+  }
+}
+
+/** Friendly error state. Hosted-mode codes name the provider and offer "Change key"; waits show a countdown. */
 export function ErrorCard({ error, onRetry, disabled }: { error: ErrorEvent; onRetry?: () => void; disabled?: boolean }) {
+  const { openSettings, providers } = useAppActions();
   const offline = error.code === "MODEL_OFFLINE" || error.code === "NETWORK";
+  const name = providerLabel(error.provider, providers);
+  const look = lookFor(error.code, name);
+  const left = useCountdown(error.at, error.retry_after_s);
+  const waiting = left > 0;
   return (
-    <div role="alert" className="animate-fade-up flex gap-3 rounded-2xl border border-danger/30 bg-card p-4 shadow-sm">
-      <NoticeIcon icon={WifiOff} tone="danger" />
+    <div role="alert" data-testid="error-card" data-code={error.code} className="animate-fade-up flex gap-3 rounded-2xl border border-danger/30 bg-card p-4 shadow-sm">
+      <NoticeIcon icon={look.icon} tone="danger" />
       <div className="min-w-0 flex-1">
-        <p className="text-[15px] font-semibold leading-8">{offline ? "The assistant is offline" : "Something went wrong"}</p>
+        <p className="text-[15px] font-semibold leading-8">{look.title}</p>
         <p className="text-[15px] text-foreground/90">
           {/* show `backticked` text as inline code */}
           {error.message.split("`").map((part, i) =>
@@ -113,16 +153,30 @@ export function ErrorCard({ error, onRetry, disabled }: { error: ErrorEvent; onR
             ),
           )}
         </p>
+        {waiting && (
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            You can try again in <span className="font-semibold tabular-nums text-foreground">{left} s</span>.
+          </p>
+        )}
         {offline && (
           <>
             <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Meanwhile, the official pages</p>
             <LinkList links={FALLBACK_LINKS} />
           </>
         )}
-        {onRetry && (
-          <Button size="sm" variant="outline" className="mt-3" onClick={onRetry} disabled={disabled}>
-            <RotateCw className="h-3.5 w-3.5" aria-hidden /> Try again
-          </Button>
+        {((onRetry && look.retry) || look.changeKey) && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {look.changeKey && (
+              <Button size="sm" variant={look.retry ? "outline" : "primary"} onClick={() => openSettings("model")}>
+                <KeyRound className="h-3.5 w-3.5" aria-hidden /> {look.changeKey === "add" ? "Add key" : "Change key"}
+              </Button>
+            )}
+            {onRetry && look.retry && (
+              <Button size="sm" variant="outline" onClick={onRetry} disabled={disabled || waiting}>
+                <RotateCw className="h-3.5 w-3.5" aria-hidden /> Try again
+              </Button>
+            )}
+          </div>
         )}
       </div>
     </div>

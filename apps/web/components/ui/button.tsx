@@ -6,10 +6,10 @@ type Size = "sm" | "md" | "icon" | "icon-sm";
 
 const variants: Record<Variant, string> = {
   primary: "bg-primary text-primary-foreground hover:bg-[#4338ca] disabled:bg-muted disabled:text-muted-foreground",
-  secondary: "bg-muted text-foreground hover:bg-border",
-  ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
-  outline: "border border-input bg-transparent text-foreground hover:bg-muted",
-  danger: "border border-danger/40 text-danger hover:bg-danger-soft",
+  secondary: "bg-muted text-foreground hover:bg-border disabled:opacity-50",
+  ghost: "text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50",
+  outline: "border border-input bg-transparent text-foreground hover:bg-muted disabled:opacity-50",
+  danger: "border border-danger/40 text-danger hover:bg-danger-soft disabled:opacity-50",
 };
 const sizes: Record<Size, string> = {
   sm: "h-8 px-3 text-sm gap-1.5",

@@ -10,17 +10,31 @@ export function DialogContent({
   className,
   title,
   description,
+  initialFocusId,
   children,
 }: {
   className?: string;
   title: string;
   description?: string;
+  /** id of the element to focus when the dialog opens (default: the first focusable one). */
+  initialFocusId?: string;
   children: React.ReactNode;
 }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="animate-fade-up fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" />
       <DialogPrimitive.Content
+        onOpenAutoFocus={
+          initialFocusId
+            ? (e) => {
+                const el = document.getElementById(initialFocusId);
+                if (el) {
+                  e.preventDefault();
+                  el.focus();
+                }
+              }
+            : undefined
+        }
         className={cn(
           "animate-fade-up fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-background p-5 shadow-2xl sm:p-6",
           className,

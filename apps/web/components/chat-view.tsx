@@ -14,19 +14,26 @@ interface ChatViewProps {
   onSend: (text: string) => void;
   onRegenerate: (id: string) => void;
   onFeedback: (id: string, value: "up" | "down") => void;
+  /** Shown instead of the suggestion cards when there are no messages (e.g. the hosted key card). */
+  emptyContent?: React.ReactNode;
 }
 
 const NEAR_BOTTOM_PX = 80;
 
 /** The scrolling message column. Auto-scroll pauses when the user scrolls up. */
-export function ChatView({ chatId, messages, loaded, streamingId, waking, onSend, onRegenerate, onFeedback }: ChatViewProps) {
+export function ChatView({ chatId, messages, loaded, streamingId, waking, onSend, onRegenerate, onFeedback, emptyContent }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // should new content keep us pinned to the bottom?
   const [showJump, setShowJump] = useState(false);
+  const emptyRef = useRef(true);
+  useEffect(() => {
+    emptyRef.current = messages.length === 0;
+  }, [messages.length]);
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    // No messages: the welcome / key card is showing, so keep its top (the headline) in view.
+    if (el) el.scrollTo({ top: emptyRef.current ? 0 : el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
   function onScroll() {
@@ -62,7 +69,7 @@ export function ChatView({ chatId, messages, loaded, streamingId, waking, onSend
     <div className="relative min-h-0 flex-1">
       <div ref={scrollRef} onScroll={onScroll} className="scroll-thin absolute inset-0 overflow-y-auto overflow-x-hidden" data-testid="scroll-area">
         {empty ? (
-          <EmptyState onPick={onSend} />
+          emptyContent ?? <EmptyState onPick={onSend} />
         ) : (
           <div className="mx-auto w-full max-w-[760px] space-y-8 px-4 pb-12 pt-6" role="log" aria-label="Conversation">
             {messages.map((m, i) => (

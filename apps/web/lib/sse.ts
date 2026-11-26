@@ -1,7 +1,15 @@
 // POST /v1/chat and turn the text/event-stream reply into typed events.
 import { API_BASE, MOCK } from "./config";
+import { authHeaders, type LlmCreds, type MoodleCreds } from "./credentials";
+import { httpError } from "./errors";
 import { mockChatStream } from "./mock-stream";
 import type { ChatRequest, SSEEvent } from "./types";
+
+/** What a hosted request carries: the student's own key and (optionally) Moodle credentials. */
+export interface RequestAuth {
+  llm: LlmCreds | null;
+  moodle: MoodleCreds | null;
+}
 
 const KNOWN = new Set(["status", "tool", "sources", "token", "done", "error"]);
 
@@ -63,9 +71,9 @@ function parseBlock(block: string): SSEEvent | null {
  * Send one chat turn and yield the events. Aborting `signal` (the Stop button)
  * ends the stream quietly.
  */
-export async function* streamChat(req: ChatRequest, signal: AbortSignal): AsyncGenerator<SSEEvent> {
+export async function* streamChat(req: ChatRequest, signal: AbortSignal, auth?: RequestAuth): AsyncGenerator<SSEEvent> {
   if (MOCK) {
-    yield* mockChatStream(req, signal);
+    yield* mockChatStream(req, signal, auth);
     return;
   }
 
@@ -73,7 +81,11 @@ export async function* streamChat(req: ChatRequest, signal: AbortSignal): AsyncG
   try {
     res = await fetch(`${API_BASE}/v1/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...(auth ? authHeaders(auth.llm, auth.moodle) : {}),
+      },
       body: JSON.stringify(req),
       signal,
     });
@@ -83,7 +95,10 @@ export async function* streamChat(req: ChatRequest, signal: AbortSignal): AsyncG
       event: "error",
       data: {
         code: "NETWORK",
-        message: `Can't reach the CampusPilot server at ${API_BASE}. Make sure the API is running, then try again.`,
+        at: Date.now(),
+        message: auth
+          ? "Can't reach the CampusPilot server. It may still be waking up, so wait a few seconds and try again."
+          : `Can't reach the CampusPilot server at ${API_BASE}. Make sure the API is running, then try again.`,
       },
     };
     void err;
@@ -91,16 +106,14 @@ export async function* streamChat(req: ChatRequest, signal: AbortSignal): AsyncG
   }
 
   if (!res.ok || !res.body) {
-    let message = "Something went wrong on the server. Please try again.";
-    let code: "BAD_REQUEST" | "RATE_LIMITED" | "INTERNAL" = res.status === 429 ? "RATE_LIMITED" : res.status < 500 ? "BAD_REQUEST" : "INTERNAL";
+    // HTTP 401 / 429 JSON arrives before the stream and maps to the same banners as an SSE error.
+    let body: unknown = null;
     try {
-      const j = await res.json();
-      if (typeof j?.message === "string") message = j.message;
-      if (j?.code === "RATE_LIMITED") code = "RATE_LIMITED";
+      body = await res.json();
     } catch {
-      /* body was not JSON; keep the default message */
+      /* body was not JSON; the status decides */
     }
-    yield { event: "error", data: { code, message } };
+    yield { event: "error", data: httpError(res.status, body, res.headers.get("retry-after")) };
     return;
   }
 
@@ -109,6 +122,6 @@ export async function* streamChat(req: ChatRequest, signal: AbortSignal): AsyncG
   } catch (err) {
     if (signal.aborted) return;
     void err;
-    yield { event: "error", data: { code: "NETWORK", message: "The connection dropped while answering. Please try again." } };
+    yield { event: "error", data: { code: "NETWORK", message: "The connection dropped while answering. Please try again.", at: Date.now() } };
   }
 }

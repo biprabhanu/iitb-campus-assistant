@@ -1,12 +1,26 @@
 // Mirrors apps/api/campuspilot/schemas/chat.py (the source of truth).
 // If the Python schemas change, change this file too.
 
-export type Mode = "live" | "mock" | "fallback";
+export type Mode = "live" | "mock" | "fallback" | "byok";
+export type DeployMode = "local" | "hosted";
 export type ToolState = "start" | "done" | "error";
 export type SourceKind = "doc" | "moodle";
 export type Freshness = "current" | "needs_review" | "unknown";
-export type AnswerKind = "answer" | "clarify" | "abstain";
-export type ErrorCode = "MODEL_OFFLINE" | "TIMEOUT" | "BAD_REQUEST" | "RATE_LIMITED" | "INTERNAL";
+// moodle = a template sentence written by the server over Moodle results (no model wording).
+export type AnswerKind = "answer" | "clarify" | "abstain" | "moodle";
+export type ErrorCode =
+  | "MODEL_OFFLINE"
+  | "TIMEOUT"
+  | "BAD_REQUEST"
+  | "RATE_LIMITED"
+  | "INTERNAL"
+  // hosted (bring-your-own-key) mode, docs/CONTRACT.md §10:
+  | "MODEL_KEY_REQUIRED"
+  | "PROVIDER_KEY_REJECTED"
+  | "PROVIDER_RATE_LIMITED"
+  | "PROVIDER_TIMEOUT"
+  | "PROVIDER_ERROR"
+  | "NOT_AVAILABLE";
 // "NETWORK" is added by the browser when the API cannot be reached at all.
 export type UiErrorCode = ErrorCode | "NETWORK";
 
@@ -15,6 +29,8 @@ export type UiErrorCode = ErrorCode | "NETWORK";
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
+  // The answer_kind of an assistant turn. The server hides the content of "moodle" turns from the model.
+  kind?: AnswerKind;
 }
 
 export interface ChatRequest {
@@ -79,6 +95,9 @@ export interface DoneEvent {
 export interface ErrorEvent {
   code: UiErrorCode;
   message: string;
+  provider?: string | null; // hosted: "groq" etc.
+  retry_after_s?: number | null; // PROVIDER_RATE_LIMITED / RATE_LIMITED, when known
+  at?: number; // browser-only: when we received it (so a countdown survives a reload)
 }
 
 /** One parsed Server-Sent Event, tagged by its name. */
@@ -92,6 +111,19 @@ export type SSEEvent =
 
 // ---------- non-chat endpoints ----------
 
+/** Public facts about one allowed provider (no key data, ever). */
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  router_model: string;
+  answer_model: string;
+  key_url: string;
+  recommended?: boolean;
+  free_tier?: boolean;
+  note?: string;
+  tested?: boolean;
+}
+
 export interface StatusResponse {
   model_online: boolean;
   model_loaded: boolean;
@@ -100,6 +132,20 @@ export interface StatusResponse {
   moodle_mode: "rest" | "ical" | "demo" | "none";
   sources_indexed: number;
   mode: Mode;
+  deploy_mode?: DeployMode; // absent on an older local API: treat as "local"
+  index?: "release" | "local" | "fallback" | "missing";
+  index_version?: string | null;
+  providers?: ProviderInfo[]; // hosted only
+}
+
+/** POST /v1/llm/check: one minimal model call with the student's key. */
+export interface LLMCheckResponse {
+  ok: boolean;
+  provider: string;
+  model: string;
+  code?: ErrorCode | null;
+  message?: string | null;
+  retry_after_s?: number | null;
 }
 
 export interface MoodleTokenRequest {

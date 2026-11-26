@@ -143,6 +143,106 @@ for (const size of SIZES) {
         await shot(page, "settings", size.width, theme);
       });
 
+      // ---------- hosted mode (bring-your-own-key), mock ----------
+      const openHosted = async (page: Page, query = "", opts: { key?: boolean; provider?: string } = {}) => {
+        if (opts.key) {
+          await page.addInitScript((p) => {
+            if (!sessionStorage.getItem("campuspilot.llm.v1")) sessionStorage.setItem("campuspilot.llm.v1", JSON.stringify({ provider: p, key: "gsk_abcdefghijklmnopqrstuvwxyz123456" }));
+          }, opts.provider ?? "groq");
+        }
+        await page.goto(`/?mockHosted=1${query}`);
+        await expect(page.getByRole("heading", { name: opts.key ? /What do you need/ : /runs on your own AI key/ })).toBeVisible();
+        await page.waitForTimeout(500);
+      };
+
+      test("hosted-key-card", async ({ page }) => {
+        await openHosted(page);
+        await shot(page, "hosted-key-card", size.width, theme);
+      });
+
+      // Typed key, tested OK, the Gemini privacy note and the guide closed.
+      test("hosted-key-card-tested", async ({ page }) => {
+        await openHosted(page);
+        const card = page.getByTestId("key-card");
+        await card.getByLabel("AI provider").selectOption("gemini");
+        await card.getByLabel(/API key/).fill("AIzaSyA-abcdefghijklmnopqrstuvwxyz1234");
+        await card.getByRole("button", { name: "Show key" }).click();
+        await card.getByRole("button", { name: "Test key" }).click();
+        await expect(card.getByRole("status").filter({ hasText: "key works" })).toBeVisible();
+        await shot(page, "hosted-key-card-tested", size.width, theme);
+      });
+
+      test("hosted-key-card-error", async ({ page }) => {
+        await openHosted(page);
+        const card = page.getByTestId("key-card");
+        await card.getByLabel(/API key/).fill("badkey_abcdefghijklmnopqrstuvwxyz");
+        await card.getByRole("button", { name: "Test key" }).click();
+        await expect(card.getByRole("alert").filter({ hasText: "rejected" })).toBeVisible();
+        await shot(page, "hosted-key-card-error", size.width, theme);
+      });
+
+      test("hosted-empty", async ({ page }) => {
+        await openHosted(page, "", { key: true });
+        await shot(page, "hosted-empty", size.width, theme);
+      });
+
+      test("hosted-settings", async ({ page }) => {
+        await openHosted(page, "", { key: true });
+        await page.getByTestId("provider-pill").click();
+        await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+        await page.waitForTimeout(300);
+        await shot(page, "hosted-settings", size.width, theme);
+      });
+
+      test("hosted-settings-bottom", async ({ page }) => {
+        await openHosted(page, "", { key: true });
+        await page.getByTestId("provider-pill").click();
+        const dialog = page.getByRole("dialog", { name: "Settings" });
+        await dialog.getByLabel("Moodle token or iCal link").fill("mock-moodle-token-123456");
+        await dialog.getByRole("button", { name: "Test Moodle" }).click();
+        await expect(dialog.getByRole("status").filter({ hasText: "accepted" })).toBeVisible();
+        await dialog.getByRole("switch", { name: "Remember on this device" }).last().click();
+        await dialog.getByRole("button", { name: "Forget everything" }).click();
+        await dialog.evaluate((el) => (el.scrollTop = el.scrollHeight));
+        await page.waitForTimeout(300);
+        await shot(page, "hosted-settings-bottom", size.width, theme);
+      });
+
+      test("hosted-error-rate-limit", async ({ page }) => {
+        await openHosted(page, "&mockError=PROVIDER_RATE_LIMITED", { key: true });
+        await sendAndWait(page, "Academic calendar");
+        await expect(page.getByTestId("error-card")).toBeVisible();
+        await shot(page, "hosted-error-rate-limit", size.width, theme);
+      });
+
+      test("hosted-error-key", async ({ page }) => {
+        await openHosted(page, "&mockError=PROVIDER_KEY_REJECTED", { key: true });
+        await sendAndWait(page, "Academic calendar");
+        await expect(page.getByTestId("error-card")).toBeVisible();
+        await shot(page, "hosted-error-key", size.width, theme);
+      });
+
+      test("hosted-waking", async ({ page }) => {
+        await page.goto("/?mockHosted=1&mockCold=1");
+        await expect(page.getByTestId("waking-notice")).toBeVisible({ timeout: 8_000 });
+        await page.waitForTimeout(400);
+        await shot(page, "hosted-waking", size.width, theme);
+      });
+
+      test("hosted-server-failed", async ({ page }) => {
+        await page.goto("/?mockHosted=1&mockCold=fail");
+        await expect(page.getByTestId("server-failed-notice")).toBeVisible({ timeout: 25_000 });
+        await shot(page, "hosted-server-failed", size.width, theme);
+      });
+
+      test("hosted-moodle-answer", async ({ page }) => {
+        await openHosted(page, "", { key: true });
+        await sendAndWait(page, "What's due this week?");
+        await page.getByTestId("scroll-area").evaluate((el) => (el.scrollTop = 0));
+        await page.waitForTimeout(200);
+        await shot(page, "hosted-moodle-answer", size.width, theme);
+      });
+
       test("mobile-sidebar", async ({ page }) => {
         test.skip(size.width > 500, "mobile only");
         await open(page);

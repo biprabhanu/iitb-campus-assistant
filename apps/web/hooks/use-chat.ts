@@ -3,12 +3,18 @@
 // streaming of one answer at a time.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearConversations, historyForApi, loadConversations, newId, saveConversations } from "@/lib/history";
-import { streamChat } from "@/lib/sse";
+import { streamChat, type RequestAuth } from "@/lib/sse";
 import type { ChatMessage, Conversation } from "@/lib/types";
 
 const WAKE_AFTER_MS = 3000; // first token slower than this => "Waking up the model"
 
-export function useChat() {
+export interface ChatOptions {
+  /** Hosted mode: send the student's own key, keep the request body small. */
+  hosted: boolean;
+  auth: RequestAuth;
+}
+
+export function useChat({ hosted, auth }: ChatOptions) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -20,6 +26,11 @@ export function useChat() {
   useEffect(() => {
     convRef.current = conversations; // latest list for event handlers
   }, [conversations]);
+  // Latest key and mode, read when a request starts (so a key saved a moment ago is used).
+  const optsRef = useRef({ hosted, auth });
+  useEffect(() => {
+    optsRef.current = { hosted, auth };
+  }, [hosted, auth]);
 
   // Load saved chats once, in the browser (never during server rendering).
   useEffect(() => {
@@ -58,7 +69,12 @@ export function useChat() {
       const wakeTimer = setTimeout(() => !gotToken && setWaking(true), WAKE_AFTER_MS);
 
       try {
-        const events = streamChat({ message: userText, history: historyForApi(priorMessages) }, controller.signal);
+        const { hosted: isHosted, auth: requestAuth } = optsRef.current;
+        const events = streamChat(
+          { message: userText, history: historyForApi(priorMessages, { hosted: isHosted, message: userText }) },
+          controller.signal,
+          isHosted ? requestAuth : undefined,
+        );
         for await (const ev of events) {
           if (controller.signal.aborted) break;
           switch (ev.event) {
@@ -85,7 +101,12 @@ export function useChat() {
               patchMessage(convId, assistantId, (m) => ({ ...m, done: ev.data, status: "complete" }));
               break;
             case "error":
-              patchMessage(convId, assistantId, (m) => ({ ...m, error: ev.data, status: "error" }));
+              patchMessage(convId, assistantId, (m) => ({
+                ...m,
+                // Name the provider even if the server did not (we know which key we sent).
+                error: { ...ev.data, provider: ev.data.provider ?? (optsRef.current.hosted ? optsRef.current.auth.llm?.provider : null) ?? null, at: ev.data.at ?? Date.now() },
+                status: "error",
+              }));
               break;
             default:
               break; // "status" is not needed by the UI yet

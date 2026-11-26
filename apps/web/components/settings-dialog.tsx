@@ -2,10 +2,14 @@
 import { useState } from "react";
 import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { SettingsSection } from "@/components/app-actions";
+import { HostedSettings } from "@/components/hosted-settings";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { deleteMoodleCredentials, sendMoodleCredentials } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { Credentials } from "@/hooks/use-credentials";
 import type { StatusState } from "@/hooks/use-status";
+import type { ProviderInfo } from "@/lib/types";
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | "warn" }) {
   return (
@@ -24,12 +28,23 @@ export function SettingsDialog({
   state,
   onRefreshStatus,
   onClearHistory,
+  hosted,
+  creds,
+  providers,
+  section,
+  onForgetAll,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   state: StatusState;
   onRefreshStatus: () => void;
   onClearHistory: () => void;
+  /** Hosted mode shows the key and browser-side Moodle settings instead of the Keychain ones. */
+  hosted: boolean;
+  creds: Credentials;
+  providers: ProviderInfo[];
+  section: SettingsSection;
+  onForgetAll: () => void;
 }) {
   const [secret, setSecret] = useState(""); // lives only in this component's memory
   const [busy, setBusy] = useState(false);
@@ -96,7 +111,23 @@ export function SettingsDialog({
         onOpenChange(o);
       }}
     >
-      <DialogContent title="Settings" description="Connect Moodle, check the model and manage data kept in this browser.">
+      <DialogContent
+        title="Settings"
+        description={hosted ? "Your AI key and optional Moodle, kept in this browser." : "Connect Moodle, check the model and manage data kept in this browser."}
+        className={hosted ? "max-w-xl" : undefined}
+        initialFocusId={hosted ? (section === "moodle" ? "hs-moodle" : !creds.llm ? "hs-key" : undefined) : undefined}
+      >
+        {hosted ? (
+          <HostedSettings
+            creds={creds}
+            providers={providers}
+            state={state}
+            onForgetAll={() => {
+              onForgetAll();
+              onOpenChange(false);
+            }}
+          />
+        ) : (
         <div className="space-y-6">
           <section aria-labelledby="moodle-h">
             <h3 id="moodle-h" className="text-sm font-semibold">Moodle</h3>
@@ -177,6 +208,7 @@ export function SettingsDialog({
             )}
           </section>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

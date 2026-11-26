@@ -63,6 +63,7 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
     kind === "abstain" ? [] : citedFirst(sources.filter((s) => !(s.kind === "moodle" && s.due_at)), citations);
   const officeUrls = (done?.office_links ?? []).map((l) => l.url);
   const waitingForText = streaming && !content;
+  const moodleFirst = kind === "moodle" && deadlines.length > 0;
   const text = <Markdown text={content} citations={citations} sources={sources} extraUrls={officeUrls} />;
 
   let body: React.ReactNode = null;
@@ -89,12 +90,14 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
         )}
 
         <SourcesRow sources={docSources} citations={citations} />
-        <DeadlineCards items={deadlines} />
+        {/* A Moodle answer is one template sentence from the server, shown above the cards it describes. */}
+        {!moodleFirst && <DeadlineCards items={deadlines} />}
 
         <div aria-live="polite" aria-busy={streaming} className="text-[15.5px] leading-relaxed">
           {waitingForText && <AnswerSkeleton />}
           {body}
         </div>
+        {moodleFirst && <DeadlineCards items={deadlines} hideSummary />}
 
         {message.status === "stopped" && <p className="text-xs italic text-muted-foreground">Stopped.</p>}
 

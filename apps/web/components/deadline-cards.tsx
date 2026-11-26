@@ -22,17 +22,17 @@ function summarise(items: SourceItem[]): string {
 
 /** One calm notice for the whole group, instead of a "Demo data" chip on every card. */
 function DemoBanner() {
-  const { openSettings } = useAppActions();
+  const { openSettings, hosted } = useAppActions();
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-warning/30 bg-card px-3.5 py-2.5 sm:flex-row sm:items-center sm:gap-3">
       <p className="flex min-w-0 flex-1 items-start gap-2.5 text-sm leading-snug">
         <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
         <span>
           <strong className="font-semibold">Demo data</strong>
-          <span className="text-muted-foreground"> — connect Moodle in Settings to see your real deadlines</span>
+          <span className="text-muted-foreground"> — {hosted ? "add your Moodle token or calendar link" : "connect Moodle"} in Settings to see your real deadlines</span>
         </span>
       </p>
-      <Button size="sm" variant="outline" onClick={openSettings} className="self-start max-sm:ml-[26px] sm:self-auto">
+      <Button size="sm" variant="outline" onClick={() => openSettings("moodle")} className="self-start max-sm:ml-[26px] sm:self-auto">
         Open Settings
       </Button>
     </div>
@@ -40,7 +40,7 @@ function DemoBanner() {
 }
 
 /** Moodle deadlines grouped by day (in IST). Red when due in under 24 hours. */
-export function DeadlineCards({ items }: { items: SourceItem[] }) {
+export function DeadlineCards({ items, hideSummary = false }: { items: SourceItem[]; hideSummary?: boolean }) {
   if (items.length === 0) return null;
   const sorted = [...items].sort((a, b) => Date.parse(a.due_at!) - Date.parse(b.due_at!));
   const groups: { key: string; label: string; items: SourceItem[] }[] = [];
@@ -54,7 +54,7 @@ export function DeadlineCards({ items }: { items: SourceItem[] }) {
   return (
     <section aria-label="Deadlines" className="animate-fade-up space-y-3">
       {items.some((i) => i.demo) && <DemoBanner />}
-      <p className="text-sm font-medium text-foreground">{summarise(sorted)}</p>
+      {!hideSummary && <p className="text-sm font-medium text-foreground">{summarise(sorted)}</p>}
       <div className="space-y-4">
         {groups.map((g) => (
           <div key={g.key}>

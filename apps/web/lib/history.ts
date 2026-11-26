@@ -40,12 +40,31 @@ export function clearConversations(): void {
   }
 }
 
-/** The last 20 finished turns, as the API expects them (role + content only). */
-export function historyForApi(messages: ChatMessage[]): ChatTurn[] {
-  return messages
-    .filter((m) => m.content.trim() && m.status !== "error")
-    .slice(-MAX_HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content.slice(0, 8000) }));
+/** Hosted mode keeps the request body under the server's 8 KB limit (docs/CONTRACT.md §10.2). */
+export const HOSTED_HISTORY_TURNS = 6;
+export const HOSTED_TURN_CHARS = 600;
+export const HOSTED_BODY_BYTES = 7_000; // the limit is 8,192; leave room for the JSON itself
+
+const bytes = (v: unknown) => new TextEncoder().encode(JSON.stringify(v)).length;
+
+/**
+ * Finished turns as the API expects them: role, content and (for assistant turns) the answer kind.
+ * Local: the last 20 turns. Hosted: the last 6 turns, each trimmed to about 600 characters, and older
+ * turns are dropped while the whole body (with `message`) is still too big.
+ */
+export function historyForApi(messages: ChatMessage[], opts: { hosted?: boolean; message?: string } = {}): ChatTurn[] {
+  const finished = messages.filter((m) => m.content.trim() && m.status !== "error");
+  const toTurn = (m: ChatMessage, max: number): ChatTurn => {
+    const kind = m.role === "assistant" ? (m.done?.answer_kind ?? "answer") : undefined;
+    return { role: m.role, content: m.content.slice(0, max), ...(kind ? { kind } : {}) };
+  };
+  if (!opts.hosted) return finished.slice(-MAX_HISTORY_TURNS).map((m) => toTurn(m, 8000));
+
+  let turns = finished.slice(-HOSTED_HISTORY_TURNS).map((m) => toTurn(m, HOSTED_TURN_CHARS));
+  while (turns.length > 0 && bytes({ message: opts.message ?? "", history: turns }) > HOSTED_BODY_BYTES) {
+    turns = turns.slice(1); // drop the oldest first
+  }
+  return turns;
 }
 
 export type GroupName = "Today" | "Yesterday" | "Earlier";
