@@ -1,0 +1,8 @@
+From: Asha Demo <asha.demo@example.com>
+To: student@example.org
+Subject: Lunch on Sunday?
+Message-ID: <demo-personal-1@example.com>
+Date: {NOW-12h}
+Content-Type: text/plain; charset=utf-8
+
+Hey, are you free for lunch this weekend? Let me know what you like.

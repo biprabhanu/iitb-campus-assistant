@@ -1,0 +1,9 @@
+From: Dean Academics Office (demo) <dean-acad@example.org>
+To: student@example.org
+Subject: Quiz 2 schedule
+Message-ID: <demo-exam-1@example.org>
+Date: {NOW-30h}
+Content-Type: text/plain; charset=utf-8
+
+The second quiz for the common course will be held on {WD+5}, {D+5} at 9:30 AM
+in the Convocation Hall. Bring your ID card.
