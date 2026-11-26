@@ -61,8 +61,9 @@ export function useStatus() {
       return;
     }
     if (!alive()) return;
-    // A server on this very computer is not asleep, it is not started: the offline notice covers that.
-    if (API_IS_LOOPBACK && !mockCold()) {
+    // A local-mode server on this very computer is not asleep, it is not started: the offline notice
+    // covers that. A hosted-mode server (seen on an earlier visit) can sleep wherever it runs.
+    if (API_IS_LOOPBACK && cachedDeployMode() !== "hosted" && !mockCold()) {
       await refresh();
       return;
     }
