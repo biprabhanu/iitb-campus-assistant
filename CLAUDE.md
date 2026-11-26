@@ -65,8 +65,8 @@ It runs in two modes, from one codebase:
 **Secrets**
 - Never commit `.env`, keys, tokens, DBs, `data/raw/`, `data/processed/`, ssh configs, server
   IPs, usernames, roll numbers or private notes.
-- Before every push: `git grep` must find no `gsk_`, `AIza`, `sk-` followed by 20+ characters, or
-  `wstoken=`, excluding the prompt files.
+- Before every push: `make secrets-check`, plus the key and token grep from
+  `DEPLOY_MASTER_PROMPT.md` §6. The patterns live there so this file doesn't trip the grep.
 - Never print, echo or log the test LLM key; scripts read it from `.env` themselves. The owner must
   never paste keys into the chat.
 - The hosted server never stores, logs or caches student keys or Moodle tokens.
