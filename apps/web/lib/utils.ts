@@ -70,6 +70,51 @@ export function istDayLabel(iso: string, now = Date.now()): { key: string; label
   return { key, label };
 }
 
+/** "Fri, 28 Nov" in IST. */
+export function istDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-IN", { timeZone: IST, weekday: "short", day: "numeric", month: "short" }).format(new Date(iso));
+}
+
+/**
+ * When an event happens, in IST, for the event card:
+ *   all day:        "Fri, 28 Nov · All day"
+ *   same-day span:  "Fri, 28 Nov, 5:00 PM – 6:30 PM IST"
+ *   no end / other: "Fri, 28 Nov, 5:00 PM IST"
+ */
+export function istEventWhen(startIso: string, endIso?: string | null, allDay = false): string {
+  if (allDay) return `${istDay(startIso)} · All day`;
+  if (endIso && !Number.isNaN(Date.parse(endIso)) && istDayKey(new Date(endIso)) === istDayKey(new Date(startIso))) {
+    return `${istDay(startIso)}, ${istTime(startIso)} – ${istTime(endIso)} IST`;
+  }
+  return istDateTime(startIso);
+}
+
+/** Heading for a day given as "YYYY-MM-DD": "Today", "Tomorrow" or "Fri, 28 Nov". */
+export function dayHeadingFromKey(key: string, now = Date.now()): string {
+  if (key === istDayKey(now)) return "Today";
+  if (key === istDayKey(now + 86_400_000)) return "Tomorrow";
+  // Noon IST on that date, so the weekday and day number can never slip across midnight.
+  return istDay(`${key}T12:00:00+05:30`);
+}
+
+/** "10:30" -> "10:30 AM" (ASC gives 24-hour times in IST). */
+export function hhmmTo12h(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** The link only if it is a plain web address. Server data is never trusted to be a safe href (no javascript: URLs). */
+export function safeHttpUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- citations ----------
 
 const MARKER = /\[((?:S|M)\d+)\]/g;
@@ -116,5 +161,11 @@ const DONE_LABELS: Record<string, string> = {
   get_my_deadlines: "Checked your Moodle deadlines",
   get_course_contents: "Opened course contents",
   ask_clarification: "Asked a clarifying question",
+  // v2 connectors
+  search_my_mail: "Searched your mail",
+  get_upcoming_institute_events: "Found events in your mail",
+  get_my_timetable: "Read your ASC timetable",
+  get_my_registered_courses: "Read your ASC courses",
+  get_my_grades: "Read your ASC grades",
 };
 export const doneLabel = (name: string, fallback: string) => DONE_LABELS[name] ?? fallback;

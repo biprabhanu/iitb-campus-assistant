@@ -4,6 +4,7 @@ import type { ErrorEvent, UiErrorCode } from "./types";
 const CODES: UiErrorCode[] = [
   "MODEL_OFFLINE", "TIMEOUT", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL", "MODEL_KEY_REQUIRED",
   "PROVIDER_KEY_REJECTED", "PROVIDER_RATE_LIMITED", "PROVIDER_TIMEOUT", "PROVIDER_ERROR", "NOT_AVAILABLE", "NETWORK",
+  "NOT_CONNECTED", "AUTH_FAILED", "OTP_REQUIRED", "UNREACHABLE", "SESSION_EXPIRED", "CALENDAR_ERROR",
 ];
 
 function asSeconds(v: unknown): number | null {

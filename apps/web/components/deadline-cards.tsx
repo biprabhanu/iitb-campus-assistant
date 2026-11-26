@@ -1,6 +1,7 @@
 "use client";
 import { CalendarClock, ExternalLink, FlaskConical } from "lucide-react";
 import { useAppActions } from "@/components/app-actions";
+import { SourceLabel } from "@/components/source-label";
 import { Button } from "@/components/ui/button";
 import { cn, courseColorIndex, istDayLabel, istDateTime, relativeDue } from "@/lib/utils";
 import type { SourceItem } from "@/lib/types";
@@ -73,7 +74,8 @@ export function DeadlineCards({ items, hideSummary = false }: { items: SourceIte
                             {d.course}
                           </span>
                         )}
-                        <span className="truncate text-xs text-muted-foreground">{istDateTime(d.due_at!)}</span>
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">{istDateTime(d.due_at!)}</span>
+                        <SourceLabel label="Moodle" />
                       </div>
                       <p className="mt-1.5 text-[15px] font-medium leading-snug">{d.title}</p>
                     </div>

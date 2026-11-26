@@ -54,6 +54,33 @@ export function mockHold(): "tool" | "text" | null {
 export const mockHosted = () => flag("mockHosted", process.env.NEXT_PUBLIC_MOCK_HOSTED);
 
 /**
+ * Mock-only, for tests: ?mockNet=1 makes the status, ping and connector calls use the real `fetch`
+ * (chat stays mocked). Playwright then answers them with `page.route`, so a test can see exactly
+ * which requests (and headers) the UI sends.
+ */
+export const mockNet = () => flag("mockNet", process.env.NEXT_PUBLIC_MOCK_NET);
+
+/**
+ * Mock-only: the starting state of the three v2 connectors in Settings.
+ *   (default) / ?mockConnectors=none   enabled, nothing connected yet
+ *   ?mockConnectors=connected          all three connected
+ *   ?mockConnectors=off                all three turned off in .env
+ *   ?mockConnectors=demo               connected, with fixture data (demo badge)
+ */
+export type MockConnectors = "none" | "connected" | "off" | "demo";
+export function mockConnectors(): MockConnectors {
+  let v: string | null = process.env.NEXT_PUBLIC_MOCK_CONNECTORS ?? null;
+  if (typeof window !== "undefined") {
+    try {
+      v = new URLSearchParams(window.location.search).get("mockConnectors") ?? v;
+    } catch {
+      /* ignore */
+    }
+  }
+  return v === "connected" || v === "off" || v === "demo" ? v : "none";
+}
+
+/**
  * Mock-only: pretend the server is asleep at start-up.
  *   ?mockCold=1     asleep for about a minute (shows "Waking the server")
  *   ?mockCold=fail  never wakes; the retry budget shrinks to ~5 s so the failure card shows quickly

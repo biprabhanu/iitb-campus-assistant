@@ -11,7 +11,7 @@ export interface RequestAuth {
   moodle: MoodleCreds | null;
 }
 
-const KNOWN = new Set(["status", "tool", "sources", "token", "done", "error"]);
+const KNOWN = new Set(["status", "tool", "sources", "cards", "token", "done", "error"]);
 
 /**
  * Parse a Server-Sent Events byte stream. Safe when a chunk ends in the middle of
