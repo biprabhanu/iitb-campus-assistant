@@ -12,6 +12,8 @@ from campuspilot.connectors import keychain
 from campuspilot.connectors.errors import ConnectorError
 
 USERNAME_ENTRY = "webmail_username"
+# Holds the SSO access token for Emails (IITB IMAP does not accept the LDAP password). The
+# entry keeps the generic name from the contract.
 PASSWORD_ENTRY = "webmail_password"  # noqa: S105 (a keyring entry name, not a secret)
 
 

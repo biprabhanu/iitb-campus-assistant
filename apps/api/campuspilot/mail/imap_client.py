@@ -36,7 +36,14 @@ _UNREACHABLE = (
     "Could not reach IITB Webmail. Connect to the campus network or the IITB VPN and try again."
 )
 _TIMEOUT = "IITB Webmail took too long to answer. Check the campus network or the IITB VPN."
-_AUTH = "IITB Webmail rejected the username or password."
+# IITB's IMAP server does not take the LDAP password: mail apps must log in with an SSO access
+# token (sso.iitb.ac.in -> Manage account -> Access tokens -> Emails). Found in live testing on
+# 27 Nov 2026 (the LDAP password was rejected) and in public IITB IMAP projects' setup notes.
+TOKEN_HELP = "Create one at sso.iitb.ac.in → Manage account → Access tokens → Emails."  # noqa: S105 (help text)
+_AUTH = (
+    "IITB Webmail rejected the login. Use your LDAP id and an SSO access token for Emails, "
+    f"not your LDAP password. {TOKEN_HELP}"
+)
 _SERVER = "IITB Webmail returned an unexpected answer. Try again in a moment."
 _TLS = (
     "Could not open a secure connection to IITB Webmail. The server's security settings may "
