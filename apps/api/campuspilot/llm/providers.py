@@ -41,12 +41,13 @@ PROVIDERS: dict[str, Provider] = {
         id="groq",
         label="Groq",
         base_url="https://api.groq.com/openai/v1",
-        router_model="llama-3.1-8b-instant",
-        answer_model="llama-3.3-70b-versatile",
+        router_model="openai/gpt-oss-20b",
+        answer_model="openai/gpt-oss-120b",
         key_url="https://console.groq.com/keys",
         recommended=True,
         free_tier=True,
         note="Recommended. Free, no card needed.",
+        tested=True,  # tool-call probe passed 2026-11-26 (scripts/probe_provider.py)
     ),
     "gemini": Provider(
         id="gemini",

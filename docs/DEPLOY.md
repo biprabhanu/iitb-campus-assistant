@@ -148,12 +148,14 @@ From `apps/api/campuspilot/llm/providers.py`. The router model does the short cl
 
 | Provider id | Router model | Answer model | Create a key | Free tier | Tested | Date |
 |---|---|---|---|---|---|---|
-| `groq` (recommended) | `llama-3.1-8b-instant` | `llama-3.3-70b-versatile` | https://console.groq.com/keys | yes | not yet (TBD in Phase 0 probe) | TBD |
-| `gemini` | `gemini-2.5-flash-lite` | `gemini-2.5-flash` | https://aistudio.google.com/app/apikey | yes | not yet (TBD in Phase 0 probe) | TBD |
-| `openai` | `gpt-4.1-nano` | `gpt-4.1-mini` | https://platform.openai.com/api-keys | no (paid) | not yet (TBD in Phase 0 probe) | TBD |
-| `openrouter` | `meta-llama/llama-3.3-70b-instruct:free` | `meta-llama/llama-3.3-70b-instruct:free` | https://openrouter.ai/settings/keys | free models, low daily limits | not yet (TBD in Phase 0 probe) | TBD |
+| `groq` (recommended) | `openai/gpt-oss-20b` | `openai/gpt-oss-120b` | https://console.groq.com/keys | yes | yes: tool-call probe passed, plus a live end-to-end answer | 2026-11-26 |
+| `gemini` | `gemini-2.5-flash-lite` | `gemini-2.5-flash` | https://aistudio.google.com/app/apikey | yes | not tested (no key available) | — |
+| `openai` | `gpt-4.1-nano` | `gpt-4.1-mini` | https://platform.openai.com/api-keys | no (paid) | not tested (no key available) | — |
+| `openrouter` | `meta-llama/llama-3.3-70b-instruct:free` | `meta-llama/llama-3.3-70b-instruct:free` | https://openrouter.ai/settings/keys | free models, low daily limits | not tested (no key available) | — |
 
 The probe is `scripts/probe_provider.py`. It uses the owner's own test key from `.env`.
+
+Groq probe, 2026-11-26: `/models` listed 11 models; the earlier guesses `llama-3.1-8b-instant` and `llama-3.3-70b-versatile` were **no longer listed**. Tool-call probe passed for `openai/gpt-oss-20b`, `openai/gpt-oss-120b` and `qwen/qwen3.8-27b`. Groq's response headers reported, per model: 1,000 requests per day and 8,000 tokens per minute. The router and answer models are different, so each has its own per-minute budget. Model lists change; re-run the probe before relying on these ids.
 
 Measured questions per minute on a free Groq key: TBD after Phase 3.
 

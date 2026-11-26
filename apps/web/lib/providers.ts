@@ -3,7 +3,7 @@
 import type { ProviderInfo } from "./types";
 
 export const FALLBACK_PROVIDERS: ProviderInfo[] = [
-  { id: "groq", label: "Groq", router_model: "llama-3.1-8b-instant", answer_model: "llama-3.3-70b-versatile", key_url: "https://console.groq.com/keys", recommended: true, free_tier: true, note: "Recommended. Free, no card needed." },
+  { id: "groq", label: "Groq", router_model: "openai/gpt-oss-20b", answer_model: "openai/gpt-oss-120b", key_url: "https://console.groq.com/keys", recommended: true, free_tier: true, note: "Recommended. Free, no card needed." },
   { id: "gemini", label: "Google Gemini", router_model: "gemini-2.5-flash-lite", answer_model: "gemini-2.5-flash", key_url: "https://aistudio.google.com/app/apikey", free_tier: true, note: "Google's free tier may use your prompts to improve its products; Groq is recommended." },
   { id: "openai", label: "OpenAI", router_model: "gpt-4.1-nano", answer_model: "gpt-4.1-mini", key_url: "https://platform.openai.com/api-keys", note: "Paid; billed to your OpenAI account." },
   { id: "openrouter", label: "OpenRouter", router_model: "meta-llama/llama-3.3-70b-instruct:free", answer_model: "meta-llama/llama-3.3-70b-instruct:free", key_url: "https://openrouter.ai/settings/keys", note: "Free models have low daily limits." },

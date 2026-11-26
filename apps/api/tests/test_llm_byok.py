@@ -28,7 +28,7 @@ async def test_chat_uses_router_model_temperature_zero_and_tools() -> None:
     )
     reply = await make().chat(MESSAGES, [{"type": "function"}])
     body = json.loads(route.calls[0].request.content)
-    assert body["model"] == "llama-3.1-8b-instant" and body["temperature"] == 0
+    assert body["model"] == "openai/gpt-oss-20b" and body["temperature"] == 0
     assert body["tools"] and "stream" not in body
     assert route.calls[0].request.headers["authorization"] == f"Bearer {FAKE_KEY}"
     assert reply.tool_calls[0].name == "search_campus_docs"
@@ -41,7 +41,7 @@ async def test_stream_uses_answer_model_and_caps_output() -> None:
     pieces = [p async for p in make().stream(MESSAGES)]
     body = json.loads(route.calls[0].request.content)
     assert pieces == ["Hel", "lo"]
-    assert body["model"] == "llama-3.3-70b-versatile" and body["temperature"] == 0.2
+    assert body["model"] == "openai/gpt-oss-120b" and body["temperature"] == 0.2
     assert body["max_tokens"] == 400 and body["stream"] is True
 
 
@@ -59,7 +59,7 @@ async def test_check_sends_one_token_request() -> None:
     route = respx.post(GROQ_URL).mock(return_value=completion("a"))
     await make().check()
     body = json.loads(route.calls[0].request.content)
-    assert body["max_tokens"] == 1 and body["model"] == "llama-3.1-8b-instant"
+    assert body["max_tokens"] == 1 and body["model"] == "openai/gpt-oss-20b"
 
 
 @pytest.mark.parametrize("status", [401, 403])

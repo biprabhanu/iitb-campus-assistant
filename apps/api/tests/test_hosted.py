@@ -127,7 +127,7 @@ def test_llm_check_ok(monkeypatch) -> None:
     assert response.json() == {
         "ok": True,
         "provider": "groq",
-        "model": "llama-3.1-8b-instant",
+        "model": "openai/gpt-oss-20b",
         "code": None,
         "message": None,
     }
