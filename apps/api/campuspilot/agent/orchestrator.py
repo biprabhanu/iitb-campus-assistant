@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -22,7 +23,15 @@ from pydantic import ValidationError
 from campuspilot.agent.citations import CitationFilter
 from campuspilot.agent.prompts import build_system_prompt
 from campuspilot.config import Settings, get_settings
-from campuspilot.llm.base import LLMClient, LLMError, LLMReply, Message, ModelOffline, ModelTimeout
+from campuspilot.llm.base import (
+    LLMClient,
+    LLMError,
+    LLMReply,
+    Message,
+    ModelOffline,
+    ModelTimeout,
+    ToolCall,
+)
 from campuspilot.schemas.chat import (
     ChatRequest,
     DoneEvent,
@@ -196,6 +205,25 @@ async def _lookup_office_links(topic: str, timeout_s: float) -> list[OfficeLink]
     return [OfficeLink(title=x.title, url=x.url, issuer=x.issuer) for x in output.links]
 
 
+# ---------- retrieval guard ----------
+
+_SMALL_TALK = re.compile(
+    r"^\s*(hi|hii+|hello|hey|thanks|thank you|thx|ok|okay|bye|good (morning|evening|night))\b",
+    re.IGNORECASE,
+)
+
+
+def _is_small_talk(message: str) -> bool:
+    """Greetings and one-word replies don't need a document search."""
+    return len(message.split()) <= 2 or bool(_SMALL_TALK.match(message))
+
+
+def _forced_search(message: str) -> LLMReply:
+    """Gemma sometimes answers or abstains without looking anything up. We never let it
+    finish an institutional question without a search, so the backend makes the call itself."""
+    return LLMReply(tool_calls=[ToolCall("search_campus_docs", {"query": message[:300]})])
+
+
 # ---------- the main loop ----------
 
 
@@ -261,6 +289,14 @@ async def _run(
 
     while executed < settings.max_tool_calls and follow_up is None:
         reply = await llm.chat(messages, schemas)
+        # Only when NO tool has run yet: a Moodle-only or link-only turn is fine as it is.
+        if (
+            not reply.tool_calls
+            and not trace.tools
+            and "search_campus_docs" in by_name
+            and not _is_small_talk(request.message)
+        ):
+            reply = _forced_search(request.message)
         if not reply.tool_calls:
             final_reply = reply
             break

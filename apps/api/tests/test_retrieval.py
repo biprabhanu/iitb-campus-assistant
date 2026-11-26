@@ -155,3 +155,15 @@ def test_list_sources_and_count(conn, tmp_path) -> None:
     assert listed["SRC-A"].documents == 1 and listed["SRC-A"].chunks > 0
     assert listed["SRC-B"].documents == 0
     assert count_indexed_sources() == 1
+
+
+def test_display_title_falls_back_to_file_name():
+    from campuspilot.retrieval.tools import display_title
+
+    url = "https://acad.iitb.ac.in/sites/default/files/UG_RULE_BOOK.pdf"
+    assert display_title(url, url, "Source") == "UG RULE BOOK"
+    assert (
+        display_title(None, "https://x.in/Academic%20Calendar-2026.pdf", "S")
+        == "Academic Calendar 2026"
+    )
+    assert display_title("Code of Conduct", url, "Source") == "Code of Conduct"

@@ -70,7 +70,8 @@ async def test_routing_text_is_streamed_without_second_call(monkeypatch) -> None
 
 
 async def test_evidence_blocks_have_stable_ids_and_are_sent_as_tool_messages(monkeypatch) -> None:
-    install_fake_tools(monkeypatch, hits=[make_hit(1), make_hit(2, text="Exams in Nov.")])
+    other_doc = make_hit(2, text="Exams in Nov.", url="https://www.iitb.ac.in/exams.pdf")
+    install_fake_tools(monkeypatch, hits=[make_hit(1), other_doc])
     llm = ScriptedLLM(
         [
             LLMReply(tool_calls=[call("search_campus_docs", query="a")]),
@@ -86,6 +87,23 @@ async def test_evidence_blocks_have_stable_ids_and_are_sent_as_tool_messages(mon
     assert tool_msgs[0]["tool_name"] == "search_campus_docs"
     assert '<evidence id="S1" kind="doc"' in tool_msgs[0]["content"]
     assert 'tier="1"' in tool_msgs[0]["content"]
+
+
+async def test_chunks_of_one_document_share_one_id(monkeypatch) -> None:
+    # Two chunks from the same URL -> one source card and one citation id.
+    same_doc = [make_hit(1, page=2), make_hit(2, text="Exams in Nov.", page=5)]
+    install_fake_tools(monkeypatch, hits=same_doc)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="a")]), LLMReply(content="ok")]
+    )
+    events, trace = await run(llm)
+    sources = next(d for n, d in events if n == "sources")
+    assert [s["id"] for s in sources] == ["S1"]
+    assert sources[0]["locator"] == "p. 2, p. 5"
+    assert trace.chunk_ids == [1, 2]
+    tool_msg = next(m for m in llm.chat_calls[-1][0] if m["role"] == "tool")
+    assert tool_msg["content"].count('id="S1"') == 1  # merged into one block for the model
+    assert "Exams in Nov." in tool_msg["content"]
 
 
 async def test_evidence_text_cannot_close_the_block(monkeypatch) -> None:
@@ -337,3 +355,31 @@ async def test_mock_abstains_when_no_hits(monkeypatch) -> None:
     install_fake_tools(monkeypatch, hits=[])
     events, _ = await run(MockLLM(), "something obscure")
     assert done_of(events)["answer_kind"] == "abstain"
+
+
+async def test_backend_searches_when_model_skips_tools(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(content="ABSTAIN: I could not find it."), LLMReply(content="Found it [S1].")]
+    )
+    events, trace = await run(llm, "Where can I find the academic calendar?")
+    assert trace.tools == ["search_campus_docs"]
+    assert "sources" in names(events)
+    assert answer_text(events) == "Found it [S1]."
+
+
+async def test_small_talk_skips_the_forced_search(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM([LLMReply(content="Hi! Ask me about IITB.")])
+    events, trace = await run(llm, "hello there")
+    assert trace.tools == [] and "sources" not in names(events)
+
+
+def test_grouped_citations_are_split_and_validated() -> None:
+    from campuspilot.agent.citations import CitationFilter
+
+    f = CitationFilter({"S1", "S2"})
+    pieces = ["Be polite [S1,", " S2; S9]. Done [S", "2]."]
+    text = "".join(f.feed(p) for p in pieces) + f.flush()
+    assert text == "Be polite [S1][S2]. Done [S2]."
+    assert f.cited == ["S1", "S2"] and f.removed == 1

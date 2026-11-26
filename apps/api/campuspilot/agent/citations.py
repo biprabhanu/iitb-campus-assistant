@@ -9,12 +9,16 @@ from __future__ import annotations
 import re
 
 MARKER_RE = re.compile(r"\[([SM]\d+)\]")
-_PARTIAL_RE = re.compile(r"\[(?:[SM]\d*)?$")  # "[", "[S", "[S1": might still become a marker
+# Models also write grouped markers like "[S1, S2]" or "[S1; M2]". We rewrite them as "[S1][S2]".
+GROUP_RE = re.compile(r"\[([SM]\d+(?:\s*[,;]\s*[SM]\d+)*)\]")
+_ID_RE = re.compile(r"[SM]\d+")
+# "[", "[S", "[S1", "[S1, ", "[S1, S": might still become a marker, so hold it back.
+_PARTIAL_RE = re.compile(r"\[(?:[SM]\d*(?:\s*[,;]\s*(?:[SM]\d*)?)*)?$")
 
 
 def find_markers(text: str) -> list[str]:
     """All citation ids mentioned in `text`, in order (valid or not)."""
-    return MARKER_RE.findall(text)
+    return [i for group in GROUP_RE.findall(text) for i in _ID_RE.findall(group)]
 
 
 class CitationFilter:
@@ -36,9 +40,10 @@ class CitationFilter:
                 break
             out.append(self._buf[:start])
             rest = self._buf[start:]
-            match = MARKER_RE.match(rest)
+            match = GROUP_RE.match(rest)
             if match:
-                self._handle(match.group(1), out, match.group(0))
+                for marker_id in _ID_RE.findall(match.group(1)):
+                    self._handle(marker_id, out, f"[{marker_id}]")
                 self._buf = rest[match.end() :]
             elif _PARTIAL_RE.match(rest):
                 self._buf = rest  # wait for more text

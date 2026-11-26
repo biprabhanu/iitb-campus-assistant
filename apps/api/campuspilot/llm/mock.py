@@ -58,13 +58,17 @@ def _route(text: str) -> list[ToolCall]:
             ToolCall("get_official_link", {"topic": "hostel maintenance"}),
             ToolCall("search_campus_docs", {"query": "hostel maintenance complaint"}),
         ]
-    if "mess menu" in low and (re.search(r"\b20[3-9]\d\b", low) or "next year" in low):
-        return []  # nothing could cover a far-future menu -> abstain
     return [ToolCall("search_campus_docs", {"query": text[:300]})]
 
 
-def compose_answer(evidence: list[tuple[str, str]]) -> str:
-    if not evidence:
+def _unanswerable(text: str) -> bool:
+    """A far-future mess menu can't be in any source, whatever the search returns."""
+    low = text.lower()
+    return "mess menu" in low and bool(re.search(r"\b20[3-9]\d\b|next year", low))
+
+
+def compose_answer(evidence: list[tuple[str, str]], question: str = "") -> str:
+    if not evidence or _unanswerable(question):
         return _ABSTAIN
     lines = ["Here is what the sources say:"]
     for eid, text in evidence[:3]:
@@ -84,7 +88,7 @@ class MockLLM:
     async def chat(self, messages: list[Message], tools: list[dict[str, Any]] | None) -> LLMReply:
         tools_ran, evidence = _evidence_since_last_user(messages)
         if tools_ran:
-            return LLMReply(content=compose_answer(evidence))
+            return LLMReply(content=compose_answer(evidence, _last_user_text(messages)))
         calls = _route(_last_user_text(messages))
         if calls:
             return LLMReply(tool_calls=calls)
@@ -92,5 +96,5 @@ class MockLLM:
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
         _, evidence = _evidence_since_last_user(messages)
-        for piece in _pieces(compose_answer(evidence)):
+        for piece in _pieces(compose_answer(evidence, _last_user_text(messages))):
             yield piece

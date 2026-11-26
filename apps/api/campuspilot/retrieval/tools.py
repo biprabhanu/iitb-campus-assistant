@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlparse
 
 from campuspilot.ingestion.db import connect, resolve_db_path
 from campuspilot.schemas.chat import SourcePublic
@@ -110,12 +111,22 @@ def _score(row: sqlite3.Row) -> float:
     return score * TIER1_BOOST if row["authority_tier"] == 1 else score
 
 
+def display_title(title: str | None, url: str, fallback: str) -> str:
+    """A readable title. Some PDFs have no title, and the parser stored the URL instead;
+    then we use the file name ("UG_RULE_BOOK.pdf" -> "UG RULE BOOK")."""
+    if title and not title.startswith(("http://", "https://")):
+        return title
+    name = PurePosixPath(unquote(urlparse(url).path)).stem
+    name = re.sub(r"[_\-]+", " ", name).strip()
+    return name or fallback
+
+
 def _to_hit(row: sqlite3.Row) -> DocChunkHit:
     return DocChunkHit(
         chunk_id=row["chunk_id"],
         source_id=row["source_id"],
         document_id=row["document_id"],
-        title=row["title"] or row["source_title"],
+        title=display_title(row["title"], row["url"], row["source_title"]),
         issuer=row["issuer"],
         url=row["url"],
         heading_path=row["heading_path"] or "",

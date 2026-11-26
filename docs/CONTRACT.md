@@ -133,8 +133,12 @@ Tool results go back to the model as a `role: "tool"` message whose content is e
 </evidence>
 ```
 
-IDs are assigned by the orchestrator per turn, in order of first appearance (S1.. docs, M1.. Moodle,
-one id per chunk/deadline/course). The same chunk keeps its id within a turn. `get_official_link`
+IDs are assigned by the orchestrator per turn, in order of first appearance (S1.. docs, M1.. Moodle).
+Docs get **one id per document URL**: further chunks of the same document are merged into that id
+(locator becomes e.g. "p. 2, p. 5"), so the UI shows one card per document. Moodle: one id per
+deadline/course. If the model finishes without calling any tool (and the message isn't small talk),
+the backend runs `search_campus_docs` with the student's message itself. Grouped markers such as
+`[S1, S2]` are rewritten to `[S1][S2]` before streaming. `get_official_link`
 results become `S` evidence too (kind="doc", text = notes). Moodle `M` evidence is personal data:
 with `mode=fallback` and `ALLOW_PERSONAL_DATA_TO_CLOUD=false`, Moodle tools are not offered at all.
 

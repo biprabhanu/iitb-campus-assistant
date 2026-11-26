@@ -9,3 +9,13 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Conflicts fixed: the template `.gitignore` rule `lib/` would have hidden `apps/web/lib/`, so it's now anchored to `/lib/`. The old README mentioned IITB mail, which is out of scope for v1 and will be rewritten. System Python is 3.9, so the API uses a uv-managed Python 3.12 venv in `apps/api/.venv`. macOS has no `timeout` command, so scripts must not rely on it.
 - Decisions: `schemas/` and `config.py` are lead-owned so that the workers share one contract. The contract adds `answer_kind`, `office_links`, `demo` and `moodle_mode` fields, the `RATE_LIMITED` code and an `ask_clarification` control tool (see `docs/CONTRACT.md` §3–§6). Commit attribution is off in `.claude/settings.json`.
 - Effort policy (owner): high effort only for decisions; workers at medium on Sonnet/Haiku. Exception: the frontend is high effort (owner asked for a "top notch" UI), so a high-effort design review and polish pass follows the first frontend build.
+
+## Phase 1 — four workers (26 Nov 2026)
+
+- All four workers reported done; 110 tests passed. Data: 9 sources ingested (44 docs, 335 chunks), 5 link_only; the hostel rules PDF was demoted to link_only (scanned, no text layer, no OCR). Everything fetched from the Mac, so Passpoli wasn't needed. Moodle: a public, credential-free probe shows the IITB mobile web service is enabled; the live token is untested. Frontend: `node_modules` is 543 MB (Next 206 MB + swc 97 MB), slightly over the ~500 MB guideline; noted, not trimmed.
+- The owner authorised pushing to GitHub after each phase (an exception to hard stop 2; force-push is still a hard stop).
+
+## Phase 2 — integration (26 Nov 2026)
+
+- Live run of the definition-of-done questions through the real API, Gemma and the index. Three fixes (decided by the lead): (1) one evidence id per document URL, because chunk-level ids gave duplicate source cards; (2) a backend retrieval guard: Gemma sometimes abstained without searching, so the backend now runs `search_campus_docs` itself if no tool was called (small talk excepted); (3) prompt v2026-11-26.4: explicit clarify examples ("Can I change my room?" now asks UG/PG/PhD), "never abstain without searching", and "only name offices that appear in evidence". Also: `[S1, S2]` is rewritten to `[S1][S2]`, and untitled PDFs show a file-name title.
+- Live results after the fixes: calendar → cited answer (S1–S5, 7.8 s); "what's due" → 4 demo deadline cards (4.6 s); mess menu 2031 → searched then abstained, with hostel office links; "Can I change my room?" → one clarifying question (1.3 s), and the follow-up "UG student" → cited answer; tunnel down → `MODEL_OFFLINE` error event and `/v1/status` model_online=false.
