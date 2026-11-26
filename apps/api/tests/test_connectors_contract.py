@@ -125,14 +125,22 @@ def test_disabled_connector_endpoint_answers_not_available(monkeypatch) -> None:
 
 
 def test_connector_errors_never_echo_the_password(monkeypatch) -> None:
+    from campuspilot.connectors.errors import ConnectorError
+
     client = _client(monkeypatch, **ALL_ON)
     secret = "Sup3r-Secret-Passw0rd"
+
+    # Fake the module so this test never opens a network connection, whatever Worker A built.
+    async def rejected(req):
+        raise ConnectorError("auth_failed", "IITB Webmail did not accept that login.")
+
+    monkeypatch.setattr(campuspilot.mail, "mail_login", rejected)
     response = client.post(
         "/v1/connectors/webmail/login",
         json={"username": "student", "password": secret},
         headers=CONFIRM,
     )
-    assert response.status_code == 501  # Phase 0 stub
+    assert response.status_code == 401 and response.json()["code"] == "AUTH_FAILED"
     assert secret not in response.text
 
 
