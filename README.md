@@ -24,6 +24,13 @@ Acceptance check (25 questions, live, a small single-user check, not a benchmark
 behaviour, **75%** expected source cited, median time to first token 6.2 s. Details and caveats in
 [docs/EVAL.md](docs/EVAL.md).
 
+**Known limitation: hostel rules can't be cited.** The official *Hostel Rules and Regulations* PDF
+(`SRC-HOSTEL-RULES`) is a scanned document with no text layer, and v1 has no OCR. It is kept as a
+link-only source: CampusPilot can point you to the PDF, but it can't quote or cite it. Hostel
+questions are answered from the Hostel Affairs Council FAQ (student-body guidance, tier 2) where it
+covers them. Otherwise CampusPilot says it couldn't verify the answer and links the rules PDF. See
+[docs/SOURCES.md](docs/SOURCES.md#known-limitations).
+
 ![CampusPilot answering with cited sources](docs/screenshots/live-answer-1440-dark.png)
 
 

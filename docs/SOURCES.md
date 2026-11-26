@@ -32,6 +32,20 @@ Counts are indexed documents and chunks from the audit. A "document" is a page o
 PDFs failed text extraction (scanned or empty) and are stored as `failed`, never indexed. 5 rows
 `link_only`, 0 `blocked`, 0 `needs_review`.
 
+## Known limitations
+
+- **Hostel rules PDF: scanned, no text layer.** `SRC-HOSTEL-RULES`
+  (`hostelrulesregulations.pdf` on dosa.iitb.ac.in) is page images only. Text extraction returns
+  nothing and v1 has no OCR, so the row was changed from `ingest` to `link_only`.
+  - **What the user sees:** CampusPilot can't quote or cite the official hostel rules. Hostel
+    questions are answered from the tier-2 Hostel Affairs Council FAQ (`SRC-HOSTEL-FAQ`) where it
+    covers them. Otherwise the answer abstains and links the rules PDF through `get_official_link`.
+  - **Fix:** OCR for scanned PDFs (for example Tesseract), or a text version of the rules from
+    DoSA. Then switch the row back to `ingest`.
+- **Other scanned or empty PDFs.** Six linked PDFs on ingested pages also have no text (see the
+  totals above). They are stored as `failed` and never indexed, so their content can't be cited
+  either.
+
 ## How we fetch responsibly
 
 - **Identify ourselves.** Every request sends the User-Agent `CampusPilot-student-prototype (IE624 course project)`.
