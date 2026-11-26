@@ -11,12 +11,29 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Mode = Literal["live", "mock", "fallback"]
+# live = Ollama via the tunnel, mock = scripted fake model, fallback = optional cloud fallback,
+# byok = hosted mode with the student's own provider key.
+Mode = Literal["live", "mock", "fallback", "byok"]
+DeployMode = Literal["local", "hosted"]
 ToolState = Literal["start", "done", "error"]
 SourceKind = Literal["doc", "moodle"]
 Freshness = Literal["current", "needs_review", "unknown"]
-AnswerKind = Literal["answer", "clarify", "abstain"]
-ErrorCode = Literal["MODEL_OFFLINE", "TIMEOUT", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL"]
+# moodle = a template sentence written by our code over Moodle results (no LLM wording).
+AnswerKind = Literal["answer", "clarify", "abstain", "moodle"]
+ErrorCode = Literal[
+    "MODEL_OFFLINE",
+    "TIMEOUT",
+    "BAD_REQUEST",
+    "RATE_LIMITED",
+    "INTERNAL",
+    # hosted (bring-your-own-key) mode, CONTRACT §10:
+    "MODEL_KEY_REQUIRED",
+    "PROVIDER_KEY_REJECTED",
+    "PROVIDER_RATE_LIMITED",
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_ERROR",
+    "NOT_AVAILABLE",
+]
 
 
 # ---------- request ----------
@@ -27,6 +44,9 @@ class ChatTurn(BaseModel):
 
     role: Literal["user", "assistant"]
     content: str = Field(max_length=8000)
+    # The browser echoes the answer_kind of assistant turns. Turns with kind="moodle" hold
+    # personal data, so the server replaces their content before any LLM sees the history.
+    kind: AnswerKind | None = None
 
 
 class ChatRequest(BaseModel):
@@ -101,12 +121,30 @@ class DoneEvent(BaseModel):
 class ErrorEvent(BaseModel):
     code: ErrorCode
     message: str  # human-friendly; never a stack trace or env value
+    provider: str | None = None  # hosted: "groq" etc., so the UI can say "Change key"
+    retry_after_s: int | None = None  # PROVIDER_RATE_LIMITED / RATE_LIMITED, when known
 
 
 # ---------- non-chat endpoints ----------
 
 
+class ProviderInfo(BaseModel):
+    """Public facts about one allowed provider (no key data, ever)."""
+
+    id: str
+    label: str
+    router_model: str
+    answer_model: str
+    key_url: str
+    recommended: bool = False
+    free_tier: bool = False
+    note: str = ""
+    tested: bool = False
+
+
 class StatusResponse(BaseModel):
+    # Hosted mode: model_online/model_loaded are true when the API is up (the model depends on
+    # each student's key, checked per request) and model is "byok".
     model_online: bool
     model_loaded: bool
     model: str
@@ -114,6 +152,22 @@ class StatusResponse(BaseModel):
     moodle_mode: Literal["rest", "ical", "demo", "none"] = "none"
     sources_indexed: int
     mode: Mode
+    deploy_mode: DeployMode = "local"
+    # release = downloaded GitHub Release, local = data/campuspilot.db,
+    # fallback = fixture demo index (download failed), missing = no index at all
+    index: Literal["release", "local", "fallback", "missing"] = "local"
+    index_version: str | None = None  # e.g. "index-2026-11-30", or "fixtures"
+    providers: list[ProviderInfo] = Field(default_factory=list)  # hosted only
+
+
+class LLMCheckResponse(BaseModel):
+    """POST /v1/llm/check: one minimal model call with the student's key."""
+
+    ok: bool
+    provider: str
+    model: str
+    code: ErrorCode | None = None
+    message: str | None = None
 
 
 class KnowledgeSearchRequest(BaseModel):

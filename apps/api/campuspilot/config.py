@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,6 +23,12 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    # --- Deployment mode (docs/CONTRACT.md §10) ---
+    # local  = Mac + Passpoli Ollama tunnel, Keychain for Moodle (the original app).
+    # hosted = public API on Render: bring-your-own LLM key per request, Moodle credentials per
+    #          request, no Ollama, no Keychain, no server-side model key.
+    deploy_mode: Literal["local", "hosted"] = "local"
 
     # --- LLM (Ollama on Passpoli, reached through the SSH tunnel) ---
     ollama_base_url: str = "http://127.0.0.1:11500"
@@ -59,14 +66,49 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://127.0.0.1:3000", "http://localhost:3000"]
     )
-    rate_limit_per_min: int = 30
+    # Extra allowed origins, comma separated (hosted: the Vercel production URL).
+    allowed_origins: str = ""
+    rate_limit_per_min: int = 20
+    rate_limit_per_day: int = 400
+    # Request body limit. Hosted is 8 KB (the browser trims history); local keeps 32 KB.
+    max_body_bytes_local: int = 32 * 1024
+    max_body_bytes_hosted: int = 8 * 1024
     tool_timeout_s: float = 15.0
     max_tool_calls: int = 4
     max_history_turns: int = 20
+    # --- Hosted (bring-your-own-key) budgets: students are on small free tiers ---
+    provider_timeout_s: float = 30.0
+    hosted_max_history_turns: int = 6
+    hosted_evidence_token_budget: int = 2500  # about 4 characters per token
+    hosted_max_evidence_chunks: int = 5
+    hosted_max_output_tokens: int = 400
+
+    # --- Index download (hosted). The DB is a GitHub Release asset, never in Git. ---
+    # local    = use campuspilot_db_path as it is (the original behaviour).
+    # release  = at startup, download the newest `index-*` release asset, verify SHA256SUMS,
+    #            and fall back to the fixture demo index if anything fails.
+    index_source: Literal["local", "release"] = "local"
+    index_repo: str = "biprabhanu/iitb-campus-assistant"
+    index_tag_prefix: str = "index-"
+    index_download_timeout_s: float = 30.0
+
     # One short extra model call that decides "ask a clarifying question?" (agent/clarify.py).
     clarify_precheck: bool = True
     # After a document search, also look up registry portal links (agent/orchestrator.py).
     auto_official_links: bool = True
+
+    @property
+    def hosted(self) -> bool:
+        return self.deploy_mode == "hosted"
+
+    @property
+    def all_cors_origins(self) -> list[str]:
+        extra = [o.strip().rstrip("/") for o in self.allowed_origins.split(",") if o.strip()]
+        return list(dict.fromkeys([*self.cors_origins, *extra]))
+
+    @property
+    def max_body_bytes(self) -> int:
+        return self.max_body_bytes_hosted if self.hosted else self.max_body_bytes_local
 
     @field_validator(
         "campuspilot_db_path", "campuspilot_raw_dir", "campuspilot_registry_csv", mode="after"

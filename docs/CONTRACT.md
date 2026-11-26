@@ -183,3 +183,109 @@ Frontend: `NEXT_PUBLIC_API_BASE` (default `http://127.0.0.1:8000`), `NEXT_PUBLIC
 - `CAMPUSPILOT_MOCK_LLM=true`: the backend uses a scripted fake LLM (keyword rules → tool calls, then a
   canned answer that cites the real evidence ids). Real tools still run. `mode="mock"`.
 - `NEXT_PUBLIC_MOCK=true`: the UI never calls the API; `apps/web/lib/mock-stream.ts` replays §3 events.
+
+## 10. Hosted mode (v1.1, `DEPLOY_MODE=hosted`; spec: `DEPLOY_MASTER_PROMPT.md`)
+
+Local mode (`DEPLOY_MODE=local`, the default) behaves as in §2–§9, except §10.4, which applies to
+**both** modes.
+
+### 10.1 Phase-1 ownership (v1.1)
+
+| Owner | Paths |
+|---|---|
+| lead | as §1, plus `campuspilot/llm/providers.py`, `DEPLOY_MASTER_PROMPT.md`, `.python-version`, `.nvmrc`, root configs |
+| backend | `campuspilot/{main.py,api/,agent/,llm/ (not providers.py),tools/}`, `tests/test_api*`, `tests/test_agent*`, `tests/test_llm*`, `tests/test_hosted*`, `tests/test_privacy*` |
+| moodle | `campuspilot/moodle/`, `scripts/moodle_check.py`, `tests/test_moodle*` |
+| infra | `apps/api/Dockerfile`, `.dockerignore`, `render.yaml`, `.github/workflows/`, `campuspilot/index_release.py`, `scripts/release_index.py`, `tests/test_index_release*` |
+| frontend | `apps/web/` |
+
+### 10.2 Bring-your-own-key headers
+
+| Header | Rule |
+|---|---|
+| `X-LLM-Provider` | one of `groq`, `gemini`, `openai`, `openrouter` (`campuspilot/llm/providers.py`). Base URLs are hard-coded there; **no URL is ever accepted from the client**. |
+| `X-LLM-Key` | `^[A-Za-z0-9_\-.]{20,300}$`. Lives only for that request: never stored, logged, cached, echoed, or put in an exception message. |
+| `X-LLM-Model` | optional override for **both** router and answer model; `^[A-Za-z0-9][A-Za-z0-9._:/\-]{0,99}$`. |
+| `X-Moodle-Token` | optional; same rules as the LLM key (8–128 chars). Sent only to `MOODLE_BASE_URL`. |
+| `X-Moodle-Ical-Url` | optional; must be `https://moodle.iitb.ac.in/...`; redirects to any other host are refused. |
+
+Hosted `POST /v1/chat` order of checks (all before any work): body ≤ 8 KB → IP rate limit →
+provider + key present (else **HTTP 401** `{"code":"MODEL_KEY_REQUIRED"}`) → header format
+(bad provider/model → 400 `BAD_REQUEST`; malformed key → 401 `PROVIDER_KEY_REJECTED`). Then the
+SSE stream starts. Provider failures after that arrive as SSE `error` events.
+In local mode these headers are ignored.
+
+### 10.3 Provider errors (one OpenAI-compatible client, `llm/byok.py`)
+
+| Provider response | Code | Message (with the provider label) |
+|---|---|---|
+| 401 / 403 | `PROVIDER_KEY_REJECTED` | "Your Groq key was rejected. Check it in Settings." |
+| 429 | `PROVIDER_RATE_LIMITED` | "Groq says you've hit your free limit; try again in a minute." + `retry_after_s` from `retry-after` if present |
+| timeout | `PROVIDER_TIMEOUT` | retried **once**, then this |
+| anything else | `PROVIDER_ERROR` | "Groq returned an error. Please try again." |
+
+Never switch providers for the student. Router model = clarify pre-check + tool routing (temperature 0);
+answer model = streamed final answer (temperature 0.2, `max_tokens` = `HOSTED_MAX_OUTPUT_TOKENS`, 400).
+Hosted budgets: history ≤ 6 turns, evidence ≤ ~2,500 tokens (≤ 5 chunks, trimmed), short system prompt.
+`CAMPUSPILOT_MOCK_LLM=true` in hosted mode still requires the headers but answers with `MockLLM`.
+
+New endpoints:
+- `POST /v1/llm/check` (BYO headers, no body) → `LLMCheckResponse`. One tiny router-model call
+  (`max_tokens` 1). 200 with `ok:true`, or the HTTP status above with `ok:false` + code/message.
+- `POST /v1/moodle/check` (Moodle headers) → `MoodleTokenResponse`. Verifies, stores nothing.
+- Hosted: `POST`/`DELETE /v1/moodle/token` → 404 `{"code":"NOT_AVAILABLE"}` (no Keychain on a server).
+- `GET /v1/status` (public) adds `deploy_mode`, `index`, `index_version`, `providers` (hosted:
+  `ProviderInfo` list; no key data). Hosted: no Ollama probe; `model="byok"`, `mode="byok"`.
+- `/health`, `/v1/status`, `/v1/sources`, `/v1/knowledge/search` stay public (IP rate limit applies).
+
+Abuse limits (both modes, in memory): **20 requests/min and 400/day per client IP** on `/v1/chat`,
+`/v1/llm/check`, `/v1/moodle/check`, `/v1/knowledge/search` → 429 `RATE_LIMITED` with
+`retry_after_s`. Client IP in hosted mode: `CF-Connecting-IP`, else the **last** `X-Forwarded-For`
+entry, else the socket peer (never the leftmost XFF entry, which the client controls).
+CORS: `127.0.0.1:3000`, `localhost:3000`, plus `ALLOWED_ORIGINS` (comma separated); allowed request
+headers are exactly `Content-Type` + the five headers above.
+
+### 10.4 Moodle content never reaches an LLM (both modes)
+
+- The LLM only **routes**: it may call `get_my_deadlines`, `list_my_courses`, `get_course_contents`
+  with arguments taken from the student's own question (`course_code`, `days_ahead`).
+- Moodle results go **straight to the UI** as `sources` items (`kind:"moodle"`, ids `M1..`). The answer
+  sentence is a **template written by our code** (`agent/moodle_answer.py`), e.g. "You have 4 deadlines
+  in the next 7 days. The nearest is IE624 Assignment 3, due in 20 hours." `answer_kind="moodle"`.
+- The LLM's tool message for a Moodle tool is exactly `[Moodle results shown to the user: N items]`.
+- If only Moodle tools ran, no final LLM call is made. If doc tools also ran, the template sentence
+  is streamed first, then the LLM answer over the doc evidence only.
+- History turns with `kind:"moodle"` are replaced by `[Moodle results were shown to the user]` before
+  any LLM call (the browser sends `kind` back with each assistant turn).
+- Test (`tests/test_privacy_moodle.py`): records every outgoing LLM request body and fails if any Moodle
+  field value (titles, course names, URLs, dates) appears in it.
+- `ALLOW_PERSONAL_DATA_TO_CLOUD` no longer gates Moodle tools (nothing personal is sent); keep the
+  setting for compatibility.
+
+### 10.5 Moodle per request (hosted)
+
+Credentials come only from the request headers, held in a `contextvars.ContextVar` for that request.
+No Keychain, no env token, no cache across requests (cache key must never be shared between users;
+hosted mode disables the cross-request cache). No header → demo fixtures (labelled), as in local mode.
+`scripts/moodle_check.py --api-url URL` checks Moodle through a deployed API (reads the token from `.env`).
+If IITB Moodle doesn't answer from Render, `/v1/moodle/check` returns `NOT_AVAILABLE` with
+"Moodle isn't reachable from the hosted version. Use the local app." and everything else still works.
+
+### 10.6 Index release
+
+GitHub Action `build-index.yml` (manual + weekly Monday 03:00 IST = Sunday 21:30 UTC) runs the ingest,
+then `scripts/release_index.py` writes `manifest.json` (per source: id, url, fetched_at, sha256 of each
+document) and `SHA256SUMS`, and creates release `index-YYYY-MM-DD` with assets `campuspilot.db`,
+`manifest.json`, `SHA256SUMS`. It commits nothing and refuses to publish an index with fewer than
+100 chunks. With `INDEX_SOURCE=release` the API (`campuspilot/index_release.py`, at startup, ≤ 30 s)
+downloads the newest `index-*` release from `INDEX_REPO`, verifies the SHA-256, and uses it; on any
+failure it builds the fixture demo index (`ingestion/demo.py`) and reports `index:"fallback"`.
+Downloads follow redirects only to `github.com`, `api.github.com`, `objects.githubusercontent.com`,
+`release-assets.githubusercontent.com`.
+
+### 10.7 Frontend env
+
+`NEXT_PUBLIC_API_URL` (falls back to `NEXT_PUBLIC_API_BASE`, then `http://127.0.0.1:8000`).
+The UI learns local vs hosted from `/v1/status.deploy_mode`; one build serves both.
+Client-only state `SERVER_WAKING`: `/health` not answering within 3 s → banner "Waking the server,
+up to about a minute…" and retry with exponential backoff for up to about 90 s.

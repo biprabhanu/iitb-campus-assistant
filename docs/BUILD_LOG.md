@@ -27,3 +27,15 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - 5 live acceptance runs (25 questions). From 88% behaviour / 44% source-cited to 96% / 75%, 0 errors. Decisions: auto official-link lookup after a document search; the pre-check owns clarification (cohort-named questions skip it; the routing call no longer sees `ask_clarification`); unoffered tool calls are ignored so the search guard still runs. The overfitting caveat is in `docs/EVAL.md`.
 - Security review: the per-request log line was silent (no logging configured), so the `campuspilot` logger now prints at INFO. Verified live: no message text, roll number or token in the logs; /v1/moodle/token doesn't echo.
 - 26 Nov: fresh-clone demo. get_official_link reads registry.csv directly (no DB needed); make mock-dev builds a demo index from data/fixtures/docs/ (SRC-DEMO-*, labelled not official) only when data/campuspilot.db is missing, and make ingest removes demo sources first.
+
+## v1.1 deploy (DEPLOY_MASTER_PROMPT.md), Phase 0 decisions (high effort)
+
+- Test key absent from `.env` at Phase 0, so the Groq model list and tool-call probe are deferred; provider defaults in `llm/providers.py` are provisional (`tested=False`) until the probe runs.
+- One build serves both modes: the UI reads `deploy_mode` from `/v1/status` instead of a second build flag.
+- Moodle-never-to-LLM (§10.4) applies to local mode too: one code path, simpler tests, and Gemma never needed the Moodle text to route.
+- Moodle tools keep `course_code` from the student's question as their only input, so routing needs no Moodle data.
+- History turns carry `kind`; `kind="moodle"` content is replaced server-side before any LLM call (otherwise earlier template answers would leak course names back into the prompt).
+- Client IP behind Render/Cloudflare: `CF-Connecting-IP`, else the last XFF entry; never the leftmost (client-controlled). To be confirmed on Render in Phase 3.
+- Rate limits 20/min + 400/day per IP in both modes (was 30/min local); body 8 KB hosted, 32 KB local.
+- Index is a release asset with SHA-256 verification; any failure falls back to the fixture index (the demo builder from the fresh-clone fix), reported as `index:"fallback"`.
+- No Moodle Keychain endpoints in hosted mode (404 NOT_AVAILABLE); `/v1/moodle/check` verifies header credentials without storing them.
