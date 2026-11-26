@@ -17,6 +17,8 @@ from campuspilot.schemas.connectors import (
     AscGradesOutput,
     AscTimetableOutput,
     GetMyTimetableInput,
+    ListRecentMailInput,
+    ListRecentMailOutput,
     SearchMyMailInput,
     SearchMyMailOutput,
     UpcomingEventsInput,
@@ -52,6 +54,15 @@ def mail_search_sentence(args: SearchMyMailInput, out: SearchMyMailOutput) -> st
     if out.summary:
         text += f"\n\nSummary, written by the local model from these mails:\n{out.summary}"
     return text
+
+
+def recent_mail_sentence(args: ListRecentMailInput, out: ListRecentMailOutput) -> str:
+    what = "unread mail" if args.unread_only else "mail"
+    if not out.messages:
+        return f"You have no {what} in your inbox." if args.unread_only else "Your inbox is empty."
+    many = "unread mails" if args.unread_only else "mails"
+    count = _plural(len(out.messages), what, many)
+    return f"Here {'is' if len(out.messages) == 1 else 'are'} your {count}, newest first."
 
 
 def events_sentence(args: UpcomingEventsInput, out: UpcomingEventsOutput) -> str:
@@ -110,6 +121,7 @@ def grades_sentence(out: AscGradesOutput) -> str:
 
 _DEMO = {
     "search_my_mail": "mails",
+    "list_recent_mail": "mails",
     "get_upcoming_institute_events": "events",
     "get_my_timetable": "timetable entries",
     "get_my_registered_courses": "courses",
@@ -121,6 +133,8 @@ def personal_sentence(tool_name: str, args: Any, output: Any) -> str:
     """The answer sentence for one Webmail or ASC tool result (plus its note and demo label)."""
     if tool_name == "search_my_mail":
         text = mail_search_sentence(args, output)
+    elif tool_name == "list_recent_mail":
+        text = recent_mail_sentence(args, output)
     elif tool_name == "get_upcoming_institute_events":
         text = events_sentence(args, output)
     elif tool_name == "get_my_timetable":

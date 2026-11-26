@@ -10,6 +10,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
+from campuspilot.agent.mail_intent import is_mail_question, mail_tool_call
 from campuspilot.llm.base import LLMReply, Message, ToolCall
 
 _EVIDENCE_RE = re.compile(r'<evidence id="([SM]\d+)"[^>]*>\s*(.*?)\s*</evidence>', re.DOTALL)
@@ -72,6 +73,9 @@ def _route_connectors(low: str, text: str) -> list[ToolCall]:
     """v2 connector questions (only reached when the connectors are on; see CONTRACT §11)."""
     if "event" in low and re.search(r"mail|institute", low):
         return [ToolCall("get_upcoming_institute_events", {"days": 7})]
+    if is_mail_question(text):  # "check my webmail latest msg", "any mail from gymkhana"...
+        name, args = mail_tool_call(text)
+        return [ToolCall(name, args)]
     if re.search(r"timetable|\bclasses\b", low):
         when = "tomorrow" if "tomorrow" in low else "this_week" if "week" in low else "today"
         return [ToolCall("get_my_timetable", {"when": when})]
@@ -79,9 +83,6 @@ def _route_connectors(low: str, text: str) -> list[ToolCall]:
         return [ToolCall("get_my_grades", {})]
     if "registered" in low or ("asc" in low and "course" in low):
         return [ToolCall("get_my_registered_courses", {})]
-    if re.search(r"\bmails?\b|\bemails?\b|\binbox\b", low):
-        args = {"query": text[:200], "days": 14, "summarize": "summar" in low}
-        return [ToolCall("search_my_mail", args)]
     return []
 
 

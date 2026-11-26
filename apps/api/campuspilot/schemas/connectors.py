@@ -150,6 +150,20 @@ class SearchMyMailOutput(BaseModel):
     note: str = ""
 
 
+class ListRecentMailInput(_StrictInput):
+    """ "What's my latest mail?" The newest messages, headers and a short snippet only."""
+
+    limit: int = Field(default=10, ge=1, le=20)
+    unread_only: bool = False
+
+
+class ListRecentMailOutput(BaseModel):
+    messages: list[MailMessage] = Field(default_factory=list, max_length=20)  # newest first
+    unread_only: bool = False
+    demo: bool = False
+    note: str = ""
+
+
 class UpcomingEventsInput(_StrictInput):
     days: int = Field(default=7, ge=1, le=30)
     only_deadlines: bool = False  # "what's due" questions: deadlines only

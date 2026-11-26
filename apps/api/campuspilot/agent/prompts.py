@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-SYSTEM_PROMPT_VERSION = "2026-11-27.2"
+SYSTEM_PROMPT_VERSION = "2026-11-27.3"
 
 _TEMPLATE = """You are CampusPilot, an independent assistant for IIT Bombay students. \
 You are not an official IIT Bombay service. Today's date is {today}.
@@ -78,6 +78,12 @@ def build_system_prompt(
             if "get_upcoming_institute_events" in connector_tools
             else ""
         )
+        if "list_recent_mail" in connector_tools:
+            due += (
+                " For questions about the student's mail, use only the mail tools"
+                " (list_recent_mail for the newest or unread mails, search_my_mail for a sender"
+                " or topic), never search_campus_docs."
+            )
         bullet = _CONNECTOR_BULLET.format(tools=", ".join(connector_tools), due=due)
         at = text.index("- Be concise")
         text = text[:at] + bullet + text[at:]

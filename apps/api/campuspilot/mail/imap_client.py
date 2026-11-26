@@ -158,6 +158,18 @@ class ReadOnlyMailbox:
         raw = data[0] if data and isinstance(data[0], bytes) else b""
         return sorted(int(x) for x in raw.split() if x.isdigit())
 
+    def latest_uids(self, limit: int, unread_only: bool = False) -> list[int]:
+        """The `limit` highest UIDs (UIDs grow with arrival, so these are the newest mails).
+        `SEARCH UNSEEN` only reads flags; it never changes them."""
+        try:
+            typ, data = self._conn.uid("SEARCH", "UNSEEN" if unread_only else "ALL")
+        except imaplib.IMAP4.error:
+            raise SearchRefused from None
+        if typ != "OK":
+            raise SearchRefused
+        raw = data[0] if data and isinstance(data[0], bytes) else b""
+        return sorted(int(x) for x in raw.split() if x.isdigit())[-limit:]
+
     def fetch_peek(self, uids: list[int]) -> list[RawMail]:
         """Headers plus the first part of the text. BODY.PEEK never sets \\Seen."""
         if not uids:
@@ -221,24 +233,57 @@ def _scan(
         since = (datetime.now(UTC) - timedelta(days=days)).date()
         uids = box.search_uids(since)  # date only; the query is matched here (see search_uids)
         newest = uids[-settings.mail_max_scan :]
-        mails: list[ParsedMail] = []
-        for i in range(0, len(newest), FETCH_BATCH):
-            for raw in box.fetch_peek(newest[i : i + FETCH_BATCH]):
-                link = webmail_link(settings.webmail_url, settings.imap_folder, raw.uid)
-                mails.append(
-                    parse_message(
-                        raw.header + raw.text,
-                        uid=raw.uid,
-                        folder=settings.imap_folder,
-                        open_url=link,
-                    )
-                )
+        mails = _fetch_parsed(box, settings, newest)
         if query:
             mails = [m for m in mails if matches_query(m, query)]
         mails.sort(key=lambda m: m.message.date, reverse=True)
         return ScanResult(mails=mails, scanned=len(newest))
     finally:
         box.logout()
+
+
+def _fetch_parsed(box: ReadOnlyMailbox, settings: Settings, uids: list[int]) -> list[ParsedMail]:
+    """Fetch (with BODY.PEEK, so nothing is marked read) and parse, in batches."""
+    mails: list[ParsedMail] = []
+    for i in range(0, len(uids), FETCH_BATCH):
+        for raw in box.fetch_peek(uids[i : i + FETCH_BATCH]):
+            link = webmail_link(settings.webmail_url, settings.imap_folder, raw.uid)
+            mails.append(
+                parse_message(
+                    raw.header + raw.text,
+                    uid=raw.uid,
+                    folder=settings.imap_folder,
+                    open_url=link,
+                )
+            )
+    return mails
+
+
+def _latest(
+    settings: Settings, username: str, password: str, *, limit: int, unread_only: bool
+) -> ScanResult:
+    box = ReadOnlyMailbox(settings)
+    try:
+        box.login(username, password)
+        box.select_readonly(settings.imap_folder)
+        uids = box.latest_uids(limit, unread_only)
+        mails = _fetch_parsed(box, settings, uids)
+        mails.sort(key=lambda m: m.message.date, reverse=True)
+        return ScanResult(mails=mails, scanned=len(uids))
+    finally:
+        box.logout()
+
+
+async def latest_mail(
+    settings: Settings, username: str, password: str, *, limit: int, unread_only: bool = False
+) -> ScanResult:
+    """The newest `limit` mails (optionally unread only), headers + snippet, read-only."""
+    try:
+        return await asyncio.to_thread(
+            _latest, settings, username, password, limit=limit, unread_only=unread_only
+        )
+    except Exception as exc:
+        raise translate_error(exc) from None
 
 
 async def scan_mail(

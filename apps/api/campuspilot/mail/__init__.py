@@ -15,6 +15,8 @@ from __future__ import annotations
 from campuspilot.connectors.errors import ConnectorError
 from campuspilot.mail.tools import (
     get_upcoming_institute_events,
+    is_connected,
+    list_recent_mail,
     mail_login,
     mail_logout,
     mail_status,
@@ -24,6 +26,8 @@ from campuspilot.mail.tools import (
 __all__ = [
     "ConnectorError",
     "get_upcoming_institute_events",
+    "is_connected",
+    "list_recent_mail",
     "mail_login",
     "mail_logout",
     "mail_status",

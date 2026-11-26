@@ -333,12 +333,23 @@ The model may call these (all read-only, offered only when the connector is on):
 | Tool | Input | Output | Kind | Label (exact UI string) |
 |---|---|---|---|---|
 | `search_my_mail` | `SearchMyMailInput{query, days=14, summarize=false}` | `SearchMyMailOutput` | mail | "Searching your mail" |
+| `list_recent_mail` | `ListRecentMailInput{limit=10 (1–20), unread_only=false}` | `ListRecentMailOutput` | mail | "Reading your latest mail" |
 | `get_upcoming_institute_events` | `UpcomingEventsInput{days=7, only_deadlines=false}` | `UpcomingEventsOutput` | mail | "Finding events in your mail" |
 | `get_my_timetable` | `GetMyTimetableInput{when=today\|tomorrow\|this_week, on_date?}` | `AscTimetableOutput` | asc | "Reading your ASC timetable" |
 | `get_my_registered_courses` | `GetMyRegisteredCoursesInput{semester?}` | `AscCoursesOutput` | asc | "Reading your ASC courses" |
 | `get_my_grades` | `GetMyGradesInput{semester?}` | `AscGradesOutput` | asc | "Reading your ASC grades" |
 
 There is **no calendar tool**. Events are created only by `POST /v1/calendar/events` (§11.5).
+
+**Mail questions are answered from mail only** (added 27 Nov 2026). When Webmail is on and the
+question is about the student's mail (`agent/mail_intent.py`: words such as mail, webmail, inbox,
+email, msg, message, unread), the turn offers only the mail tools: no `search_campus_docs`, no
+official-link lookup, no clarify pre-check. If the model calls no mail tool, the backend runs the
+right one itself (`list_recent_mail` for "latest/unread", `search_my_mail` for a sender or topic).
+If a mail tool fails, the answer starts "I couldn't read your mail." plus the friendly error; it
+never falls back to campus documents. `list_recent_mail` uses `UID SEARCH ALL` (or `UNSEEN`) and
+`BODY.PEEK` for headers plus the first bytes of the text, so nothing is marked read and no full
+body is returned.
 
 SSE: a new event `cards` (0 or 1 time) comes after `sources` and before the first `token`:
 `status → tool* → sources? → cards? → token* → done`. Its data is a list of `Card`, discriminated by
@@ -399,6 +410,7 @@ Module signatures the API and registry call (Phase 0 stubs raise `ConnectorError
 ```python
 # campuspilot/mail/__init__.py
 async def search_my_mail(args: SearchMyMailInput) -> SearchMyMailOutput
+async def list_recent_mail(args: ListRecentMailInput) -> ListRecentMailOutput
 async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEventsOutput
 async def mail_status() -> ConnectorStatus
 async def mail_login(req: ConnectorLoginRequest) -> ConnectorStatus

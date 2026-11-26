@@ -40,7 +40,7 @@ async def test_scan_is_read_only_and_peeks(monkeypatch) -> None:
 
 
 def test_the_wrapper_exposes_no_write_commands() -> None:
-    allowed = {"login", "select_readonly", "search_uids", "fetch_peek", "logout"}
+    allowed = {"login", "select_readonly", "search_uids", "latest_uids", "fetch_peek", "logout"}
     public = {n for n in dir(ReadOnlyMailbox) if not n.startswith("_")}
     assert public == allowed
     for forbidden in ("store", "copy", "move", "expunge", "append", "send", "delete", "create"):

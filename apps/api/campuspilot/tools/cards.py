@@ -19,6 +19,7 @@ from campuspilot.schemas.connectors import (
     AscSlotCard,
     AscTimetableOutput,
     EventCard,
+    ListRecentMailOutput,
     MailCard,
     SearchMyMailOutput,
     UpcomingEventsOutput,
@@ -38,6 +39,10 @@ def _calendar_connected() -> bool:
 
 
 def from_mail_search(output: SearchMyMailOutput) -> list[Any]:
+    return [MailCard(id="", demo=output.demo, mail=m) for m in output.messages]
+
+
+def from_recent_mail(output: ListRecentMailOutput) -> list[Any]:
     return [MailCard(id="", demo=output.demo, mail=m) for m in output.messages]
 
 

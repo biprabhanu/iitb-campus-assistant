@@ -31,6 +31,7 @@ from tests.backend_helpers import ScriptedLLM, answer_text, call, done_of, names
 ALL_ON = {"WEBMAIL_ENABLED": "true", "ASC_ENABLED": "true", "GCAL_ENABLED": "true"}
 CONNECTOR_TOOLS = {
     "search_my_mail",
+    "list_recent_mail",
     "get_upcoming_institute_events",
     "get_my_timetable",
     "get_my_registered_courses",

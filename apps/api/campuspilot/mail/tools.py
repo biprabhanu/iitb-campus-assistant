@@ -1,4 +1,4 @@
-"""The two tools the chat model may call, plus login / logout / status.
+"""The three tools the chat model may call, plus login / logout / status.
 
 Everything here is read-only. The outputs are `MailMessage` / `DetectedEvent` cards: the chat
 model never sees their content (CONTRACT §11.4), and nothing is written anywhere.
@@ -21,6 +21,8 @@ from campuspilot.schemas.connectors import (
     ConnectorLoginRequest,
     ConnectorStatus,
     DetectedEvent,
+    ListRecentMailInput,
+    ListRecentMailOutput,
     SearchMyMailInput,
     SearchMyMailOutput,
     UpcomingEventsInput,
@@ -98,6 +100,40 @@ async def search_my_mail(args: SearchMyMailInput) -> SearchMyMailOutput:
         demo=is_demo,
         note=note,
     )
+
+
+async def list_recent_mail(args: ListRecentMailInput) -> ListRecentMailOutput:
+    """The newest mails in the inbox: sender, subject, date and a short snippet (no bodies)."""
+    settings = get_settings()
+    if settings.connectors_demo:
+        mails = demo.demo_mails()  # newest first
+        return ListRecentMailOutput(
+            messages=[m.message for m in mails[: args.limit]],
+            unread_only=args.unread_only,
+            demo=True,
+            note=NOTE_DEMO,
+        )
+    creds = credentials.require()
+    try:
+        result = await imap_client.latest_mail(
+            settings,
+            creds.username,
+            creds.password,
+            limit=args.limit,
+            unread_only=args.unread_only,
+        )
+    except ConnectorError as exc:
+        _record(exc)
+        raise
+    _record(None)
+    return ListRecentMailOutput(
+        messages=[m.message for m in result.mails[: args.limit]], unread_only=args.unread_only
+    )
+
+
+def is_connected() -> bool:
+    """Cheap (Keychain only, no network): is a webmail login saved, or demo mode on?"""
+    return get_settings().connectors_demo or credentials.load() is not None
 
 
 def _in_window(event: DetectedEvent, now: datetime, until: datetime) -> bool:

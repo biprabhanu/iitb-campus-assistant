@@ -163,6 +163,7 @@ const DONE_LABELS: Record<string, string> = {
   ask_clarification: "Asked a clarifying question",
   // v2 connectors
   search_my_mail: "Searched your mail",
+  list_recent_mail: "Read your latest mail",
   get_upcoming_institute_events: "Found events in your mail",
   get_my_timetable: "Read your ASC timetable",
   get_my_registered_courses: "Read your ASC courses",

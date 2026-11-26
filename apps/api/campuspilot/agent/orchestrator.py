@@ -26,6 +26,7 @@ from pydantic import ValidationError
 
 from campuspilot.agent.citations import CitationFilter
 from campuspilot.agent.clarify import needs_clarification
+from campuspilot.agent.mail_intent import is_mail_question, mail_tool_call
 from campuspilot.agent.moodle_answer import moodle_sentence
 from campuspilot.agent.personal_answer import personal_sentence
 from campuspilot.agent.prompts import build_short_prompt, build_system_prompt
@@ -186,10 +187,16 @@ def _note(text: str) -> str:
 # ---------- running one tool ----------
 
 
+_FAILED_PREFIX = {"mail": "I couldn't read your mail.", "asc": "I couldn't read ASC."}
+
+
 def _failed(spec: ToolSpec, note: str, message: str) -> ToolOutcome:
-    """A tool that did not finish. A failed personal-data tool tells the student itself."""
+    """A tool that did not finish. A failed personal-data tool tells the student itself, and
+    clearly: for a mail question nothing else answers instead (see `_run`)."""
     if spec.kind in PERSONAL_KINDS:
-        return ToolOutcome(False, _note(note), personal_text=message)
+        prefix = _FAILED_PREFIX.get(spec.kind)
+        text = f"{prefix} {message}" if prefix else message
+        return ToolOutcome(False, _note(note), personal_text=text)
     return ToolOutcome(False, _note(note), message)
 
 
@@ -277,6 +284,12 @@ def _is_small_talk(message: str) -> bool:
     return len(message.split()) <= 2 or bool(_SMALL_TALK.match(message))
 
 
+def _forced_mail(message: str) -> LLMReply:
+    """A mail question the model answered without a mail tool: run the right one ourselves."""
+    name, args = mail_tool_call(message)
+    return LLMReply(tool_calls=[ToolCall(name, args)])
+
+
 def _forced_search(message: str) -> LLMReply:
     """Gemma sometimes answers or abstains without looking anything up. We never let it
     finish an institutional question without a search, so the backend makes the call itself."""
@@ -356,7 +369,13 @@ async def _run(
         else None
     )
     specs = offered_tools(settings)
-    precheck_on = settings.clarify_precheck and llm.mode != "mock"
+    # Owner rule (27 Nov 2026): with Webmail on, a question about the student's mail is answered
+    # from the mail tools only, never from campus documents. If the mail tools fail, the student
+    # is told so; nothing else answers instead.
+    mail_turn = any(s.kind == "mail" for s in specs) and is_mail_question(request.message)
+    if mail_turn:
+        specs = [spec for spec in specs if spec.kind == "mail"]
+    precheck_on = settings.clarify_precheck and llm.mode != "mock" and not mail_turn
     if precheck_on:
         # The pre-check owns the "ask or not" decision; offering ask_clarification to the
         # routing call as well made Gemma ask even when the student had named their cohort.
@@ -401,6 +420,8 @@ async def _run(
         offered_calls = [c for c in reply.tool_calls if c.name in by_name]
         if len(offered_calls) != len(reply.tool_calls):
             reply = LLMReply(content=reply.content, tool_calls=offered_calls)
+        if mail_turn and not reply.tool_calls and not trace.tools:
+            reply = _forced_mail(request.message)
         # Only when NO tool has run yet: a Moodle-only or link-only turn is fine as it is.
         if (
             not reply.tool_calls

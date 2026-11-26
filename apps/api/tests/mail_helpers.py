@@ -66,6 +66,7 @@ class FakeImap:
     def __init__(self, mails: dict[int, bytes] | None = None) -> None:
         self.mails = dict(mails or {})
         self.flags: dict[int, set[str]] = {uid: set() for uid in self.mails}
+        self.seen: dict[int, set[str]] = {}  # mails already read before the test (server state)
         self.commands: list[tuple] = []
         self.fetched: list[int] = []
         self.searches: list[tuple] = []
@@ -107,6 +108,8 @@ class FakeImap:
     def _search(self, args: tuple) -> tuple[str, list]:
         self.searches.append(args)
         uids = sorted(self.mails)
+        if "UNSEEN" in args:  # reading flags only; the test sets `seen` to mark some as read
+            uids = [u for u in uids if "\\Seen" not in self.seen.get(u, set())]
         if "TEXT" in args:
             if self.refuse_text:
                 return "NO", [b"TEXT not supported"]

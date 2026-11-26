@@ -21,6 +21,7 @@ from campuspilot.schemas.connectors import (
     GetMyGradesInput,
     GetMyRegisteredCoursesInput,
     GetMyTimetableInput,
+    ListRecentMailInput,
     SearchMyMailInput,
     UpcomingEventsInput,
 )
@@ -116,6 +117,10 @@ async def _search_mail(args: SearchMyMailInput) -> Any:
     return await _call_connector("mail", "search_my_mail", args)
 
 
+async def _recent_mail(args: ListRecentMailInput) -> Any:
+    return await _call_connector("mail", "list_recent_mail", args)
+
+
 async def _upcoming_events(args: UpcomingEventsInput) -> Any:
     return await _call_connector("mail", "get_upcoming_institute_events", args)
 
@@ -194,6 +199,17 @@ _SPECS = [
         "mail",
         _search_mail,
         to_cards=cd.from_mail_search,
+    ),
+    ToolSpec(
+        "list_recent_mail",
+        "List the newest mails in the student's IITB webmail inbox (read-only): sender, "
+        "subject, date and a short snippet. Use for 'latest', 'new' or 'unread' mail questions; "
+        "set unread_only=true for unread.",
+        ListRecentMailInput,
+        "Reading your latest mail",
+        "mail",
+        _recent_mail,
+        to_cards=cd.from_recent_mail,
     ),
     ToolSpec(
         "get_upcoming_institute_events",

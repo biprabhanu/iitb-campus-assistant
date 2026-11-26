@@ -7,6 +7,7 @@ import type { AscCourse, AscGrade, AscTimetableSlot, AscWeekday, Card, DetectedE
 /** Tool names and the exact labels the contract fixes for them (CONTRACT section 11.3). */
 export const PERSONAL_LABELS = {
   search_my_mail: "Searching your mail",
+  list_recent_mail: "Reading your latest mail",
   get_upcoming_institute_events: "Finding events in your mail",
   get_my_timetable: "Reading your ASC timetable",
   get_my_registered_courses: "Reading your ASC courses",
