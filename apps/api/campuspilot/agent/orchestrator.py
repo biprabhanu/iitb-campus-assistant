@@ -337,6 +337,10 @@ async def _run(
             if outcome.follow_up:  # clarification ends the loop; nothing runs after it
                 follow_up = outcome.follow_up
                 break
+        # One routing round is enough: Gemma asks for all the tools it needs in one reply
+        # (parallel calls). Stopping here means the answer comes from a real streaming call
+        # (no tools offered), so the first words reach the student as soon as they're written.
+        break
 
     trace.chunk_ids = store.chunk_ids()
     if store.items:

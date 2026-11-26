@@ -1,0 +1,142 @@
+"""Student journeys: a scripted model plus fake tools, checked end to end (offline)."""
+
+from __future__ import annotations
+
+from campuspilot.agent.prompts import build_system_prompt
+from campuspilot.llm.base import LLMReply
+from campuspilot.schemas.tools import OfficialLink
+from tests.backend_helpers import (
+    ScriptedLLM,
+    answer_text,
+    call,
+    done_of,
+    install_fake_tools,
+    make_hit,
+    names,
+)
+from tests.qa_helpers import run, sources_of
+
+SUPPORT = OfficialLink(
+    source_id="SRC-SUPPORT",
+    title="IIT Bombay Support Portal",
+    issuer="IIT Bombay services",
+    url="https://support.iitb.ac.in/",
+    category="maintenance",
+    notes="hostel maintenance complaints, repairs",
+)
+
+
+async def test_calendar_question_gets_a_cited_answer(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="academic calendar")])],
+        stream_pieces=["Classes begin on 3 August [S1]."],
+    )
+    events, _ = await run(llm, "When do classes begin this semester?")
+    done = done_of(events)
+    assert names(events)[-1] == "done"
+    assert done["answer_kind"] == "answer" and done["citations"] == ["S1"]
+    assert sources_of(events)[0]["title"] == "Academic Calendar"
+    assert "[S1]" in answer_text(events)
+
+
+async def test_hostel_maintenance_links_to_support_portal_and_never_claims_submission(
+    monkeypatch,
+) -> None:
+    install_fake_tools(monkeypatch, hits=[], links=[SUPPORT])
+    llm = ScriptedLLM(
+        [
+            LLMReply(
+                tool_calls=[
+                    call("get_official_link", topic="hostel maintenance"),
+                    call("search_campus_docs", query="hostel maintenance"),
+                ]
+            )
+        ],
+        stream_pieces=["Raise a ticket yourself on the support portal [S1]."],
+    )
+    events, _ = await run(llm, "My hostel room fan is broken, please file a complaint")
+    sources = sources_of(events)
+    assert any(s["url"] == "https://support.iitb.ac.in/" for s in sources)
+    text = answer_text(events).lower()
+    for claim in (
+        "i have submitted",
+        "i've submitted",
+        "i filed",
+        "i have filed",
+        "complaint submitted",
+    ):
+        assert claim not in text
+    # The model is told never to claim it did something (checked on the prompt itself).
+    prompt = build_system_prompt().lower()
+    assert "never claim that you submitted" in prompt and "read-only" in prompt
+
+
+async def test_ambiguous_room_change_asks_a_clarifying_question(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [
+            LLMReply(
+                tool_calls=[
+                    call("ask_clarification", question="Which programme?", options=["UG", "PG"])
+                ]
+            )
+        ]
+    )
+    events, _ = await run(llm, "Can I change my room?")
+    done = done_of(events)
+    assert done["answer_kind"] == "clarify"
+    assert done["follow_up"] == {"question": "Which programme?", "options": ["UG", "PG"]}
+
+
+async def test_unanswerable_question_abstains_with_office_links(monkeypatch) -> None:
+    install_fake_tools(monkeypatch, hits=[])
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="mess menu 2031")])],
+        stream_pieces=["ABSTAIN: I could not find this. Ask the hostel office."],
+    )
+    events, _ = await run(llm, "What is the mess menu on 4 March 2031?")
+    done = done_of(events)
+    assert done["answer_kind"] == "abstain"
+    assert not answer_text(events).startswith("ABSTAIN")
+    assert done["office_links"] and done["office_links"][0]["url"].startswith("https://")
+
+
+async def test_whats_due_this_week_returns_moodle_sources_with_due_dates(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("get_my_deadlines")])],
+        stream_pieces=["Quiz 2 for IE624 is due soon [M1]."],
+    )
+    events, _ = await run(llm, "What's due this week?")
+    moodle = [s for s in sources_of(events) if s["kind"] == "moodle"]
+    assert moodle and moodle[0]["due_at"] and moodle[0]["demo"] is True
+    assert done_of(events)["citations"] == ["M1"]
+
+
+async def test_conflicting_tier1_and_tier2_sources_are_both_shown_and_cited(monkeypatch) -> None:
+    tier1 = make_hit(
+        1, text="Room change requests open in week 2.", url="https://acad.iitb.ac.in/rules.pdf"
+    )
+    tier2 = make_hit(
+        2,
+        text="Room change requests open in week 4.",
+        url="https://gymkhana.iitb.ac.in/faq",
+        authority_tier=2,
+        title="Hostel FAQ",
+    )
+    install_fake_tools(monkeypatch, hits=[tier1, tier2])
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="room change")])],
+        stream_pieces=["Rules say week 2 [S1], the FAQ says week 4 [S2]. Confirm with the office."],
+    )
+    events, _ = await run(llm, "When do room change requests open?")
+    assert {s["id"] for s in sources_of(events)} == {"S1", "S2"}
+    assert done_of(events)["citations"] == ["S1", "S2"]
+    tool_msg = (
+        next(m for m in llm.chat_calls[-1][0] if m["role"] == "tool")
+        if len(llm.chat_calls) > 1
+        else None
+    )
+    assert tool_msg is None or 'tier="1"' in tool_msg["content"]
+    assert "tier 1 beats tier 2" in build_system_prompt()

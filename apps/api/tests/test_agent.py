@@ -383,3 +383,15 @@ def test_grouped_citations_are_split_and_validated() -> None:
     text = "".join(f.feed(p) for p in pieces) + f.flush()
     assert text == "Be polite [S1][S2]. Done [S2]."
     assert f.cited == ["S1", "S2"] and f.removed == 1
+
+
+async def test_answer_after_tools_is_a_real_stream_without_tools(monkeypatch) -> None:
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="a")])],
+        stream_pieces=["Classes ", "begin [S1]."],
+    )
+    events, _ = await run(llm)
+    assert llm.stream_calls == 1 and len(llm.chat_calls) == 2  # 1 routing + 1 stream
+    assert answer_text(events) == "Classes begin [S1]."
+    assert llm.chat_calls[-1][1] is None  # no tools offered for the final answer

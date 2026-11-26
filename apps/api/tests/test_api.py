@@ -67,7 +67,7 @@ def test_live_chat_with_ollama_tool_call_and_streaming(monkeypatch) -> None:
     respx.post(f"{OLLAMA}/api/chat").mock(
         side_effect=[
             httpx.Response(200, json=tool_reply),
-            httpx.Response(200, json={"message": {"content": ""}}),
+            # after one tool round the answer is a real streaming call (no tools offered)
             httpx.Response(
                 200,
                 content=ndjson(

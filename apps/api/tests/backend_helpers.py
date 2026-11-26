@@ -134,8 +134,16 @@ class ScriptedLLM:
         return self._replies.pop(0) if self._replies else LLMReply(content="done")
 
     async def stream(self, messages: list[Message]) -> AsyncIterator[str]:
+        """Yield `stream_pieces`; if none were given, stream the next scripted reply's text
+        (the orchestrator streams the final answer after one tool round)."""
         self.stream_calls += 1
-        for piece in self._stream_pieces:
+        self.stream_messages = list(messages)
+        self.chat_calls.append((list(messages), None))  # so tests can inspect the final prompt
+        pieces = self._stream_pieces
+        if not pieces and self._replies:
+            text = self._replies.pop(0).content
+            pieces = [text[i : i + 8] for i in range(0, len(text), 8)]
+        for piece in pieces:
             yield piece
 
 
