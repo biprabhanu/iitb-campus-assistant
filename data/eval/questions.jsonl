@@ -1,0 +1,25 @@
+{"id": "q01", "question": "When do classes begin in the Autumn 2026-27 semester?", "expect": "answer", "expected_source_ids": ["SRC-ACAD-CAL"], "review_status": "draft"}
+{"id": "q02", "question": "When are the end-semester exams for Autumn 2026-27?", "expect": "answer", "expected_source_ids": ["SRC-ACAD-CAL"], "review_status": "draft"}
+{"id": "q03", "question": "What is the orientation and registration schedule for UG new entrants?", "expect": "answer", "expected_source_ids": ["SRC-UG-ENTRANTS"], "review_status": "draft"}
+{"id": "q04", "question": "Which documents do UG new entrants need to bring for the scholarship application?", "expect": "answer", "expected_source_ids": ["SRC-UG-ENTRANTS"], "review_status": "draft"}
+{"id": "q05", "question": "Which undertaking forms must new PG students qualified through GATE submit?", "expect": "answer", "expected_source_ids": ["SRC-PG-PHD-ENTRANTS"], "review_status": "draft"}
+{"id": "q06", "question": "What does the code of conduct say about ragging?", "expect": "answer", "expected_source_ids": ["SRC-DOSA-RULES", "SRC-DOSA-CODE-PDF"], "review_status": "draft"}
+{"id": "q07", "question": "How are cases of academic misconduct handled under the code of conduct?", "expect": "answer", "expected_source_ids": ["SRC-DOSA-CODE-PDF", "SRC-DOSA-RULES"], "review_status": "draft"}
+{"id": "q08", "question": "Can my parents stay overnight in my hostel room?", "expect": "answer", "expected_source_ids": ["SRC-HOSTEL-FAQ"], "review_status": "draft"}
+{"id": "q09", "question": "What do the hostel FAQs say about dining and mess timings?", "expect": "answer", "expected_source_ids": ["SRC-HOSTEL-FAQ"], "review_status": "draft"}
+{"id": "q10", "question": "How do I report a broken fan in my hostel room?", "expect": "answer", "expected_source_ids": ["SRC-SUPPORT"], "review_status": "draft"}
+{"id": "q11", "question": "Where do I raise an IT support ticket?", "expect": "answer", "expected_source_ids": ["SRC-SUPPORT"], "review_status": "draft"}
+{"id": "q12", "question": "What is the postal address and phone number of IIT Bombay?", "expect": "answer", "expected_source_ids": ["SRC-CONTACT"], "review_status": "draft"}
+{"id": "q13", "question": "What does the Student Affairs Office oversee?", "expect": "answer", "expected_source_ids": ["SRC-STUDENT-AFFAIRS"], "review_status": "draft"}
+{"id": "q14", "question": "Which councils and student bodies are part of the Students' Gymkhana?", "expect": "answer", "expected_source_ids": ["SRC-GYMKHANA"], "review_status": "draft"}
+{"id": "q15", "question": "Where can I find the campus map?", "expect": "answer", "expected_source_ids": ["SRC-INSTIAPP"], "review_status": "draft"}
+{"id": "q16", "question": "Where do I log in for course registration and grades?", "expect": "answer", "expected_source_ids": ["SRC-ASC"], "review_status": "draft"}
+{"id": "q17", "question": "What's due this week?", "expect": "moodle", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q18", "question": "Which Moodle courses am I enrolled in?", "expect": "moodle", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q19", "question": "Do I have any assignments due in the next few days?", "expect": "moodle", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q20", "question": "Can I change my room?", "expect": "clarify", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q21", "question": "When do I need to pay my fees?", "expect": "clarify", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q22", "question": "How many credits do I need to graduate?", "expect": "clarify", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q23", "question": "What will be on the mess menu on 4 March 2031?", "expect": "abstain", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q24", "question": "What is the cafeteria phone number of the Mars research station?", "expect": "abstain", "expected_source_ids": [], "review_status": "draft"}
+{"id": "q25", "question": "What is the wifi password of the faculty lounge in the Physics department?", "expect": "abstain", "expected_source_ids": [], "review_status": "draft"}
