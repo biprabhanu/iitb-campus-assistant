@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     index_source: Literal["local", "release"] = "local"
     index_repo: str = "biprabhanu/iitb-campus-assistant"
     index_tag_prefix: str = "index-"
+    # Pinned release tag (e.g. "index-2026-11-26"). When set, the index is downloaded straight
+    # from github.com/<repo>/releases/download/<tag>/..., with no api.github.com call. Hosts like
+    # Render share outbound IPs, so the unauthenticated API (60 requests/hour per IP) often
+    # answers 403 there. Empty = look up the newest `index-*` release through the API.
+    index_tag: str = ""
     index_download_timeout_s: float = 30.0
 
     # One short extra model call that decides "ask a clarifying question?" (agent/clarify.py).

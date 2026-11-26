@@ -149,21 +149,30 @@ def _download_release(settings: Settings) -> str:
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "campuspilot-index/1"}
     with httpx.Client(headers=headers) as client:
         fetcher = _Fetcher(client, deadline)
-        api = f"https://api.github.com/repos/{settings.index_repo}/releases?per_page=20"
-        try:
-            releases = json.loads(fetcher.get_bytes(api, MAX_JSON_BYTES))
-        except ValueError as exc:
-            raise IndexDownloadError("bad releases json") from exc
-        release = _newest_index_release(releases, settings.index_tag_prefix)
-        tag = str(release["tag_name"])
-        sums = fetcher.get_bytes(_asset_url(release, SUMS_ASSET), MAX_SUMS_BYTES)
+        if settings.index_tag:
+            # Pinned tag: build the download links directly and skip api.github.com.
+            tag = settings.index_tag
+            base = f"https://github.com/{settings.index_repo}/releases/download/{tag}"
+            sums_url = f"{base}/{SUMS_ASSET}"
+            db_url = f"{base}/{DB_ASSET}"
+        else:
+            api = f"https://api.github.com/repos/{settings.index_repo}/releases?per_page=20"
+            try:
+                releases = json.loads(fetcher.get_bytes(api, MAX_JSON_BYTES))
+            except ValueError as exc:
+                raise IndexDownloadError("bad releases json") from exc
+            release = _newest_index_release(releases, settings.index_tag_prefix)
+            tag = str(release["tag_name"])
+            sums_url = _asset_url(release, SUMS_ASSET)
+            db_url = _asset_url(release, DB_ASSET)
+        sums = fetcher.get_bytes(sums_url, MAX_SUMS_BYTES)
         expected = _expected_sha(sums.decode("utf-8", "replace"), DB_ASSET)
 
         fd, tmp_name = tempfile.mkstemp(dir=target.parent, prefix=".index-", suffix=".part")
         tmp = Path(tmp_name)
         try:
             with os.fdopen(fd, "wb") as fh:
-                fetcher.stream_to(_asset_url(release, DB_ASSET), fh, MAX_DB_BYTES)
+                fetcher.stream_to(db_url, fh, MAX_DB_BYTES)
             digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
             if digest != expected:
                 raise IndexDownloadError("checksum mismatch")

@@ -16,6 +16,10 @@ services:
         value: release
       - key: INDEX_REPO
         value: biprabhanu/iitb-campus-assistant
+      # Pinned so startup never calls api.github.com (Render's shared IPs hit its 403 limit).
+      # Bump this after each new `Build index` release.
+      - key: INDEX_TAG
+        value: index-2026-11-26
       - key: CAMPUSPILOT_DB_PATH
         value: /tmp/campuspilot.db
       - key: ALLOWED_ORIGINS

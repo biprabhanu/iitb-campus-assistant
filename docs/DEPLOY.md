@@ -124,6 +124,7 @@ Optional settings from `apps/api/campuspilot/config.py` that matter in hosted mo
 | `HOSTED_MAX_EVIDENCE_CHUNKS` | `5` | Maximum evidence chunks per question. |
 | `HOSTED_MAX_OUTPUT_TOKENS` | `400` | Cap on the answer length. |
 | `INDEX_TAG_PREFIX` | `index-` | Release tag prefix to look for. |
+| `INDEX_TAG` | `index-2026-11-26` in `render.yaml` (code default empty) | Pinned release tag, downloaded straight from `github.com` with no `api.github.com` call. Render's shared outbound IPs exhaust GitHub's unauthenticated API limit (403). After a new `Build index` release, update it in `render.yaml` (or the Render dashboard). Empty = look up the newest release through the API. |
 | `INDEX_DOWNLOAD_TIMEOUT_S` | `30.0` | Index download time limit at startup. |
 | `MOODLE_BASE_URL` | `https://moodle.iitb.ac.in` | The only Moodle host the API talks to. |
 | `MOODLE_TIMEOUT_S` | `10.0` | Moodle call timeout. |

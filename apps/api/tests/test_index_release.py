@@ -190,3 +190,24 @@ def test_release_script_refuses_small_index(tmp_path):
     out = tmp_path / "out"
     assert script.main(["--db", str(path), "--out", str(out)]) == 1
     assert not (out / "SHA256SUMS").exists()
+
+
+@respx.mock
+def test_pinned_tag_skips_github_api(settings, release_db, monkeypatch):
+    """With INDEX_TAG set, the API is never called (Render's shared IPs get 403 there)."""
+    monkeypatch.setenv("INDEX_TAG", "index-2026-01-04")
+    config.get_settings.cache_clear()
+    pinned = config.get_settings()
+    api_route = respx.get(API).respond(403)
+    respx.get(SUMS_URL).respond(200, text=f"{sha(release_db)}  campuspilot.db\n")
+    respx.get(DB_URL).respond(200, content=release_db)
+    info = prepare_index(pinned)
+    assert (info.kind, info.version) == ("release", "index-2026-01-04")
+    assert not api_route.called
+    assert has_source(info.db_path, "SRC-REL")
+
+
+@respx.mock
+def test_api_403_without_pinned_tag_falls_back(settings):
+    respx.get(API).respond(403)
+    assert prepare_index(settings).kind == "fallback"
