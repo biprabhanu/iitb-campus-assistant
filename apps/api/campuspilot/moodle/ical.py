@@ -5,12 +5,13 @@ from __future__ import annotations
 import re
 import time
 from datetime import UTC, date, datetime
-from urllib.parse import urlparse
+from urllib.parse import urljoin
 
 import httpx
 from icalendar import Calendar
 
 from campuspilot.config import get_settings
+from campuspilot.moodle import credentials
 from campuspilot.moodle.client import fingerprint
 from campuspilot.moodle.errors import MoodleError
 from campuspilot.schemas.tools import Deadline
@@ -28,37 +29,50 @@ def clear_cache() -> None:
 
 def validate_ical_url(url: str) -> None:
     """Only https URLs on the configured Moodle host are allowed."""
-    parsed = urlparse(url)
-    expected_host = urlparse(get_settings().moodle_base_url).hostname
-    if parsed.scheme != "https" or not parsed.hostname or parsed.hostname != expected_host:
-        raise MoodleError(
-            "unavailable", f"The calendar URL must be an https link on {expected_host}."
-        )
+    credentials.validate_ical_url(url)
+
+
+_REDIRECT_CODES = {301, 302, 303, 307, 308}
+_MAX_REDIRECTS = 3
 
 
 async def fetch_ics(url: str) -> str:
     validate_ical_url(url)
-    key = fingerprint(url)
-    hit = _CACHE.get(key)
-    if hit and hit[0] > time.monotonic():
-        return hit[1]
     settings = get_settings()
+    use_cache = not settings.hosted
+    key = fingerprint(url)
+    if use_cache:
+        hit = _CACHE.get(key)
+        if hit and hit[0] > time.monotonic():
+            return hit[1]
     try:
         async with httpx.AsyncClient(
             timeout=settings.moodle_timeout_s, follow_redirects=False
         ) as http:
             response = await http.get(url)
+            hops = 0
+            while response.status_code in _REDIRECT_CODES:
+                location = response.headers.get("location")
+                hops += 1
+                if not location or hops > _MAX_REDIRECTS:
+                    raise MoodleError(
+                        "unavailable", "The Moodle calendar link redirected too much."
+                    )
+                target = urljoin(str(response.url), location)
+                validate_ical_url(target)  # every hop must stay on the Moodle host
+                response = await http.get(target)
     except httpx.TimeoutException:
         raise MoodleError(
             "timeout", "Moodle took too long to answer. Try again in a moment."
         ) from None
     except httpx.HTTPError:
         raise MoodleError("unavailable", "Could not reach the Moodle calendar export.") from None
-    if response.status_code >= 400:
+    if response.status_code >= 400 or response.status_code in _REDIRECT_CODES:
         raise MoodleError(
             "unavailable", "The Moodle calendar export link did not work (it may have changed)."
         )
-    _CACHE[key] = (time.monotonic() + settings.moodle_cache_ttl_s, response.text)
+    if use_cache:
+        _CACHE[key] = (time.monotonic() + settings.moodle_cache_ttl_s, response.text)
     return response.text
 
 

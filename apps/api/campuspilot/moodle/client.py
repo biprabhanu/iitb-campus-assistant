@@ -70,6 +70,8 @@ class MoodleClient:
             raise MoodleError("unavailable", "That Moodle function is not allowed (read-only app).")
         args = args or {}
         key = (self._fp, wsfunction, tuple(sorted(args.items())))
+        if get_settings().hosted:  # hosted: never cache across requests
+            return await self._post(wsfunction, args)
         hit = _CACHE.get(key)
         if hit and hit[0] > time.monotonic():
             return hit[1]
@@ -87,7 +89,9 @@ class MoodleClient:
             **{k: str(v) for k, v in args.items()},
         }
         try:
-            async with httpx.AsyncClient(timeout=settings.moodle_timeout_s) as http:
+            async with httpx.AsyncClient(
+                timeout=settings.moodle_timeout_s, follow_redirects=False
+            ) as http:
                 response = await http.post(url, data=form)
         except httpx.TimeoutException:
             raise MoodleError(

@@ -27,6 +27,7 @@ from campuspilot.schemas.tools import (
 
 __all__ = [
     "MoodleError",
+    "check_credentials",
     "delete_credentials",
     "get_course_contents",
     "get_my_deadlines",
@@ -51,8 +52,23 @@ class Source:
 
 
 def resolve_source() -> Source:
-    """Keychain token, env token, Keychain iCal, env iCal, demo, else not_configured."""
+    """Local: Keychain token, env token, Keychain iCal, env iCal, demo, else not_configured.
+
+    Hosted: this request's credentials only (never Keychain or env), else demo, else not_configured.
+    """
     settings = get_settings()
+    if settings.hosted:
+        creds = credentials.get_request_credentials()
+        if creds and creds.token:
+            return Source("rest", creds.token)
+        if creds and creds.ical_url:
+            return Source("ical", creds.ical_url)
+        if settings.moodle_demo_when_unconfigured:
+            return Source("demo")
+        raise MoodleError(
+            "not_configured",
+            "Moodle is not connected. Add a Moodle token or calendar-export URL in Settings.",
+        )
     token = credentials.get_keyring_token() or settings.moodle_token.get_secret_value()
     if token:
         return Source("rest", token)
@@ -299,3 +315,31 @@ def delete_credentials() -> MoodleTokenResponse:
     return MoodleTokenResponse(
         ok=True, mode="none", message="Moodle credentials removed from your Keychain."
     )
+
+
+_HOSTED_UNREACHABLE = "Moodle isn't reachable from the hosted version. Use the local app."
+
+
+async def check_credentials() -> MoodleTokenResponse:
+    """Verify this request's credentials against Moodle. Stores nothing."""
+    creds = credentials.get_request_credentials()
+    if creds is None or not (creds.token or creds.ical_url):
+        raise MoodleError("not_configured", "No Moodle credentials were sent with this request.")
+    try:
+        if creds.token:
+            info = await MoodleClient(creds.token).site_info()
+            return MoodleTokenResponse(
+                ok=True,
+                mode="rest",
+                site_name=info.get("sitename"),
+                user_fullname=info.get("fullname"),
+                message="Moodle token works.",
+            )
+        events = parse_ics(await fetch_ics(creds.ical_url or ""))
+        return MoodleTokenResponse(
+            ok=True, mode="ical", message=f"Calendar link works ({len(events)} events)."
+        )
+    except MoodleError as err:
+        if get_settings().hosted and err.code in ("unavailable", "timeout"):
+            raise MoodleError("unavailable", _HOSTED_UNREACHABLE) from None
+        raise
