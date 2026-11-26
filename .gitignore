@@ -260,3 +260,7 @@ apps/web/playwright/.cache/
 # OS / editor
 .DS_Store
 .claude/settings.local.json
+
+# sed -i backups on macOS
+*-E
+*.bak
