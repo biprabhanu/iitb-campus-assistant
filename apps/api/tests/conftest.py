@@ -46,6 +46,7 @@ def isolated_settings(tmp_path, monkeypatch) -> Iterator[None]:
     monkeypatch.setenv("CAMPUSPILOT_RAW_DIR", str(tmp_path / "raw"))
     # Scripted LLMs in tests don't expect the extra clarify call; tests that need it opt in.
     monkeypatch.setenv("CLARIFY_PRECHECK", "false")
+    monkeypatch.setenv("AUTO_OFFICIAL_LINKS", "false")
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()

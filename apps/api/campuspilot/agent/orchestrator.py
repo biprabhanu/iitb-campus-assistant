@@ -289,11 +289,17 @@ async def _run(
     limitations: list[str] = []
     office_links: list[OfficeLink] = []
     specs = offered_tools(llm.mode, settings.allow_personal_data_to_cloud)
+    precheck_on = settings.clarify_precheck and llm.mode != "mock"
+    if precheck_on:
+        # The pre-check owns the "ask or not" decision; offering ask_clarification to the
+        # routing call as well made Gemma ask even when the student had named their cohort.
+        specs = [spec for spec in specs if spec.name != "ask_clarification"]
     by_name = {s.name: s for s in specs}
     schemas = tool_schemas(specs)
 
     history = request.history[-settings.max_history_turns :]
-    messages: list[Message] = [{"role": "system", "content": build_system_prompt(today)}]
+    system = build_system_prompt(today, clarify_tool="ask_clarification" in by_name)
+    messages: list[Message] = [{"role": "system", "content": system}]
     messages += [{"role": t.role, "content": t.content} for t in history]
     messages.append({"role": "user", "content": request.message})
 
@@ -302,7 +308,7 @@ async def _run(
     follow_up: FollowUp | None = None
 
     # Step 0: a focused yes/no check for "needs a clarifying question" (see agent/clarify.py).
-    if settings.clarify_precheck and llm.mode != "mock" and not _is_small_talk(request.message):
+    if precheck_on and not _is_small_talk(request.message):
         follow_up = await needs_clarification(llm, request.message, history)
         if follow_up is not None:
             trace.tools.append("ask_clarification")
@@ -314,6 +320,10 @@ async def _run(
 
     while executed < settings.max_tool_calls and follow_up is None:
         reply = await llm.chat(messages, schemas)
+        # Ignore requests for tools we didn't offer, so the search guard below still applies.
+        offered_calls = [c for c in reply.tool_calls if c.name in by_name]
+        if len(offered_calls) != len(reply.tool_calls):
+            reply = LLMReply(content=reply.content, tool_calls=offered_calls)
         # Only when NO tool has run yet: a Moodle-only or link-only turn is fine as it is.
         if (
             not reply.tool_calls
@@ -366,6 +376,39 @@ async def _run(
         # (parallel calls). Stopping here means the answer comes from a real streaming call
         # (no tools offered), so the first words reach the student as soon as they're written.
         break
+
+    # Official portals (support portal, ASC, InstiApp...) are registry links, not documents,
+    # so a document search alone misses them. If the model searched but didn't look up links,
+    # the backend does it too (local and cheap) so the answer can cite the right portal.
+    link_spec = by_name.get("get_official_link")
+    if (
+        settings.auto_official_links
+        and follow_up is None
+        and link_spec is not None
+        and "search_campus_docs" in trace.tools
+        and "get_official_link" not in trace.tools
+    ):
+        args = {"topic": request.message[:200]}
+        trace.tools.append(link_spec.name)
+        yield (
+            "tool",
+            ToolEvent(name=link_spec.name, label=link_spec.label, state="start").model_dump(),
+        )
+        outcome = await _execute_tool(link_spec, args, store, settings.tool_timeout_s)
+        state = "done" if outcome.ok else "error"
+        yield (
+            "tool",
+            ToolEvent(name=link_spec.name, label=link_spec.label, state=state).model_dump(),
+        )
+        office_links.extend(outcome.links)
+        messages.append(
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": link_spec.name, "arguments": args}}],
+            }
+        )
+        messages.append({"role": "tool", "tool_name": link_spec.name, "content": outcome.content})
 
     trace.chunk_ids = store.chunk_ids()
     if store.items:

@@ -435,3 +435,57 @@ async def test_precheck_no_or_garbage_carries_on_normally(monkeypatch) -> None:
         events, _ = await run(llm, "Where can I find the academic calendar?")
         assert done_of(events)["answer_kind"] == "answer"
         assert answer_text(events) == "Classes begin [S1]."
+
+
+async def test_search_also_looks_up_official_links(monkeypatch) -> None:
+    monkeypatch.setenv("AUTO_OFFICIAL_LINKS", "true")
+    get_settings.cache_clear()
+    fakes = install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="fan")])],
+        stream_pieces=["Use the portal [S2]."],
+    )
+    events, trace = await run(llm, "How do I report a broken fan?")
+    assert trace.tools == ["search_campus_docs", "get_official_link"]
+    assert len(fakes.link) == 1
+    sources = next(d for n, d in events if n == "sources")
+    assert len(sources) == 2  # the doc and the portal link
+    assert done_of(events)["citations"] == ["S2"]
+
+
+def test_cohort_named_in_question_skips_clarification() -> None:
+    from campuspilot.agent.clarify import names_a_cohort
+
+    assert names_a_cohort("Which documents do UG new entrants need?")
+    assert names_a_cohort("Forms for PG students admitted through GATE")
+    assert names_a_cohort("I am a PhD student in hostel 12")
+    assert not names_a_cohort("Can I change my room?")
+    assert not names_a_cohort("When do I pay my fees?")
+    assert not names_a_cohort("Where is the upgrade portal?")  # 'ug' only as a whole word
+
+
+async def test_routing_does_not_offer_clarify_tool_when_precheck_is_on(monkeypatch) -> None:
+    monkeypatch.setenv("CLARIFY_PRECHECK", "true")
+    get_settings.cache_clear()
+    install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("search_campus_docs", query="x")])], stream_pieces=["ok"]
+    )
+    await run(llm, "Which documents do UG new entrants need?")  # cohort named: no precheck call
+    offered = {t["function"]["name"] for t in llm.chat_calls[0][1]}
+    assert "ask_clarification" not in offered and "search_campus_docs" in offered
+
+
+async def test_unoffered_tool_call_still_gets_a_real_search(monkeypatch) -> None:
+    monkeypatch.setenv("CLARIFY_PRECHECK", "true")
+    get_settings.cache_clear()
+    fakes = install_fake_tools(monkeypatch)
+    llm = ScriptedLLM(
+        [LLMReply(tool_calls=[call("ask_clarification", question="Which?", options=["A"])])],
+        stream_pieces=["Bring the income certificate [S1]."],
+    )
+    events, trace = await run(llm, "Which documents do UG new entrants need?")
+    assert trace.tools == ["search_campus_docs"] and len(fakes.search) == 1
+    assert done_of(events)["answer_kind"] == "answer"
+    system = llm.chat_calls[0][0][0]["content"]
+    assert "ask_clarification" not in system  # the prompt doesn't mention the hidden tool

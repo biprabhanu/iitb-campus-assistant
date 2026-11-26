@@ -22,12 +22,16 @@ students. Decide if the question needs ONE clarifying question before it can be 
 correctly.
 
 It needs one only when the correct answer differs by the student's programme (UG / PG / PhD), \
-hostel, semester, year of entry or category, AND the student has not said which.
+hostel, semester, year of entry or category, AND the student has not said which. If the \
+question already names the group (for example "UG", "new entrants", "PG students", "PhD", \
+"GATE", a hostel name) it does NOT need clarification. If the rule is likely the same for \
+everyone, or you are unsure, answer false: asking too often annoys students.
 Needs clarification: "Can I change my room?", "When do I pay my fees?", "How many credits do \
 I need to graduate?", "Can I get a hostel?", "What is my exam schedule?".
 Does NOT need clarification: "Where can I find the academic calendar?", "How do I report a \
 hostel maintenance issue?", "What's due this week?", "Code of conduct basics", "What is the \
-mess menu on 3 March 2031?", "How do I contact the Dean of Student Affairs?", greetings, and \
+mess menu on 3 March 2031?", "How do I contact the Dean of Student Affairs?", "Which \
+documents do UG new entrants need?", "Can my parents visit me in the hostel?", greetings, and \
 any question where the earlier conversation already says the programme or hostel.
 
 Reply with JSON only, no other text:
@@ -35,6 +39,20 @@ Reply with JSON only, no other text:
 "options": ["<2 to 4 short options>"]}"""
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+# If the student already says which group they're in, there is nothing to ask. Gemma still
+# asked for e.g. "Which documents do UG new entrants need?", so this is a plain rule.
+_COHORT_RE = re.compile(
+    r"\b(ug|pg|ph\.?\s?d|b\.?\s?tech|m\.?\s?tech|m\.?\s?sc|b\.?\s?s|m\.?\s?des|mba|"
+    r"dual degree|undergrad\w*|postgrad\w*|master'?s|doctoral|gate|jee|entrants?|"
+    r"fresher|first[- ]year|hostel\s?\d+|h\d{1,2})\b",
+    re.IGNORECASE,
+)
+
+
+def names_a_cohort(text: str) -> bool:
+    """True if the text already says the programme, entry route or hostel."""
+    return bool(_COHORT_RE.search(text))
 
 
 def _parse(content: str) -> FollowUp | None:
@@ -59,6 +77,8 @@ async def needs_clarification(
 ) -> FollowUp | None:
     """Return a clarifying question, or None to carry on normally. Never raises for bad
     model output (that just means "no clarification"); model/transport errors propagate."""
+    if names_a_cohort(message):
+        return None  # the student already told us; no model call needed
     recent = "\n".join(f"{t.role}: {t.content[:300]}" for t in history[-4:])
     user_text = f"Earlier conversation:\n{recent}\n\n" if recent else ""
     user_text += f"Question: {message}"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-SYSTEM_PROMPT_VERSION = "2026-11-26.4"
+SYSTEM_PROMPT_VERSION = "2026-11-26.5"
 
 _TEMPLATE = """You are CampusPilot, an independent assistant for IIT Bombay students. \
 You are not an official IIT Bombay service. Today's date is {today}.
@@ -40,5 +40,18 @@ unless the student asks for more.
 """
 
 
-def build_system_prompt(today: date | None = None) -> str:
-    return _TEMPLATE.format(today=(today or date.today()).isoformat())
+# Used instead of the ask_clarification bullet when a separate pre-check already decided
+# that this question doesn't need a clarifying question (agent/clarify.py).
+_NO_CLARIFY_BULLET = (
+    "- The question has already been checked: it does not need a clarifying question. "
+    "Do not ask one; search and answer from the evidence.\n"
+)
+
+
+def build_system_prompt(today: date | None = None, clarify_tool: bool = True) -> str:
+    text = _TEMPLATE.format(today=(today or date.today()).isoformat())
+    if not clarify_tool:
+        start = text.index("- The one exception: call ask_clarification")
+        end = text.index("- Sources have a tier")
+        text = text[:start] + _NO_CLARIFY_BULLET + text[end:]
+    return text
