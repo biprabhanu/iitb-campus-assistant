@@ -3,13 +3,17 @@
 `create_event` runs only from POST /v1/calendar/events, i.e. a student's click. It is never a
 tool the model can call.
 
-PHASE 0 STUB: these are the exact signatures the API calls. Worker C replaces the bodies (and
-may add modules in this package), keeping the signatures.
+Plain httpx against Google's REST endpoints (no Google SDK). Modules: `client_file` (the Desktop
+OAuth client JSON), `auth` (OAuth + PKCE, tokens, disconnect), `events` (the idempotent insert).
 """
 
 from __future__ import annotations
 
+from campuspilot.config import get_settings
+from campuspilot.connectors import keychain
 from campuspilot.connectors.errors import ConnectorError
+from campuspilot.gcal import auth, events
+from campuspilot.gcal.client_file import SETUP_HELP, client_file_exists
 from campuspilot.schemas.connectors import (
     CalendarEventRequest,
     CalendarEventResult,
@@ -27,29 +31,40 @@ __all__ = [
     "is_connected",
 ]
 
-_TODO = "Google Calendar is not built yet."
-
 
 def is_connected() -> bool:
-    """Cheap check (Keychain only, no network) used to set EventCard.can_add_to_calendar."""
-    return False
+    """Cheap check (Keychain and client file only, no network) for EventCard.can_add_to_calendar."""
+    return keychain.get_secret("gcal_refresh_token") is not None and client_file_exists()
 
 
 async def gcal_status() -> ConnectorStatus:
-    return ConnectorStatus(name="gcal", enabled=True, state="error", message=_TODO)
+    has_token = keychain.get_secret("gcal_refresh_token") is not None
+    if not has_token:
+        message = None
+        if not client_file_exists():
+            message = SETUP_HELP.format(path=get_settings().gcal_client_file)
+        return ConnectorStatus(name="gcal", enabled=True, state="not_connected", message=message)
+    if not client_file_exists():
+        return ConnectorStatus(
+            name="gcal",
+            enabled=True,
+            state="error",
+            message=SETUP_HELP.format(path=get_settings().gcal_client_file),
+        )
+    return auth.connected_status()
 
 
 async def gcal_start_connect() -> GcalConnectStart:
-    raise ConnectorError("not_implemented", _TODO)
+    return auth.start_connect()
 
 
 async def gcal_finish_connect(code: str, state: str) -> ConnectorStatus:
-    raise ConnectorError("not_implemented", _TODO)
+    return await auth.finish_connect(code, state)
 
 
 async def gcal_disconnect() -> ConnectorStatus:
-    raise ConnectorError("not_implemented", _TODO)
+    return await auth.disconnect()
 
 
 async def create_event(req: CalendarEventRequest) -> CalendarEventResult:
-    raise ConnectorError("not_implemented", _TODO)
+    return await events.create_event(req)
