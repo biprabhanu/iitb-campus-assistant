@@ -1,0 +1,156 @@
+"""Chat request and SSE event models (docs/CONTRACT.md §2 and §3).
+
+The SSE stream from `POST /v1/chat` sends, in order:
+  status -> (tool start/done)* -> sources? -> token* -> done
+or, at any point, a single `error` event that ends the stream.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+Mode = Literal["live", "mock", "fallback"]
+ToolState = Literal["start", "done", "error"]
+SourceKind = Literal["doc", "moodle"]
+Freshness = Literal["current", "needs_review", "unknown"]
+AnswerKind = Literal["answer", "clarify", "abstain"]
+ErrorCode = Literal["MODEL_OFFLINE", "TIMEOUT", "BAD_REQUEST", "RATE_LIMITED", "INTERNAL"]
+
+
+# ---------- request ----------
+
+
+class ChatTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=8000)
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1, max_length=2000)
+    # The browser may send more; the server keeps only the last 20 turns.
+    history: list[ChatTurn] = Field(default_factory=list, max_length=100)
+
+
+# ---------- SSE event payloads ----------
+
+
+class StatusEvent(BaseModel):
+    request_id: str
+    model: str
+    mode: Mode
+
+
+class ToolEvent(BaseModel):
+    name: str
+    label: str  # human text for the UI, e.g. "Searching campus documents"
+    state: ToolState
+
+
+class SourceItem(BaseModel):
+    """One citable piece of evidence. `id` is S1.. for docs, M1.. for Moodle."""
+
+    id: str
+    title: str
+    issuer: str
+    url: str
+    locator: str | None = None  # "p. 3" or a heading path
+    checked_at: str | None = None  # ISO 8601 date the source was last fetched
+    kind: SourceKind
+    snippet: str | None = None  # short preview (<= 240 chars) for the hover card
+    # Moodle-only fields (kind == "moodle"):
+    course: str | None = None
+    due_at: str | None = None  # ISO 8601 with timezone; present => deadline card
+    activity_url: str | None = None
+    demo: bool = False  # True when this came from fixture data, not live Moodle
+
+
+class TokenEvent(BaseModel):
+    text: str
+
+
+class FollowUp(BaseModel):
+    """A clarifying question with 0-4 quick-reply options."""
+
+    question: str
+    options: list[str] = Field(default_factory=list, max_length=4)
+
+
+class OfficeLink(BaseModel):
+    title: str
+    url: str
+    issuer: str | None = None
+
+
+class DoneEvent(BaseModel):
+    citations: list[str] = Field(default_factory=list)  # validated ids only
+    follow_up: FollowUp | None = None
+    freshness: Freshness = "unknown"
+    limitations: list[str] = Field(default_factory=list)
+    latency_ms: int
+    # Additive fields (beyond the master prompt's minimum contract):
+    answer_kind: AnswerKind = "answer"
+    office_links: list[OfficeLink] = Field(default_factory=list)
+
+
+class ErrorEvent(BaseModel):
+    code: ErrorCode
+    message: str  # human-friendly; never a stack trace or env value
+
+
+# ---------- non-chat endpoints ----------
+
+
+class StatusResponse(BaseModel):
+    model_online: bool
+    model_loaded: bool
+    model: str
+    moodle: Literal["connected", "not_configured", "error"]
+    moodle_mode: Literal["rest", "ical", "demo", "none"] = "none"
+    sources_indexed: int
+    mode: Mode
+
+
+class KnowledgeSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field(min_length=1, max_length=300)
+    category: str | None = Field(default=None, max_length=50)
+    audience: str | None = Field(default=None, max_length=50)
+    k: int = Field(default=6, ge=1, le=8)
+
+
+class MoodleTokenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Exactly one of these. The value is stored in the Keychain and never echoed.
+    token: str | None = Field(default=None, min_length=8, max_length=128)
+    ical_url: str | None = Field(default=None, min_length=10, max_length=1000)
+
+
+class MoodleTokenResponse(BaseModel):
+    ok: bool
+    mode: Literal["rest", "ical", "none"]
+    site_name: str | None = None
+    user_fullname: str | None = None  # shown once in Settings so the student knows it worked
+    message: str
+
+
+class SourcePublic(BaseModel):
+    id: str
+    title: str
+    issuer: str
+    category: str
+    url: str
+    authority_tier: int
+    audience: str | None = None
+    handling: Literal["ingest", "link_only", "blocked", "needs_review"]
+    status: str  # e.g. "indexed", "failed", "not_fetched", "link_only"
+    last_checked_at: str | None = None
+    documents: int = 0
+    chunks: int = 0

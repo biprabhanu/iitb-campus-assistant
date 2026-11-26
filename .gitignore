@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -221,3 +221,42 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ===== CampusPilot =====
+# Secrets and local config (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+id_ed25519*
+id_rsa*
+ssh_config
+.ssh/
+docs/private/
+*SERVER_SETUP*.md
+*server-setup*.md
+
+# Data produced locally (raw downloads, processed text, databases)
+data/raw/
+data/processed/
+data/*.db
+data/*.db-*
+*.sqlite
+*.sqlite3
+data/eval/results*.json
+
+# Frontend
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/next-env.d.ts
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/playwright/.cache/
+*.tsbuildinfo
+.vercel
+
+# OS / editor
+.DS_Store
+.claude/settings.local.json
