@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+/* Dark mode is the default; the "dark" class is put on <html> (see layout.tsx). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- theme tokens (shadcn-style CSS variables) ---------- */
+:root {
+  --background: #ffffff;
+  --foreground: #18181b;
+  --card: #fafafa;
+  --card-foreground: #18181b;
+  --sidebar: #f4f4f5;
+  --muted: #f4f4f5;
+  --muted-foreground: #52525b; /* 7.6:1 on white */
+  --border: #e4e4e7;
+  --input: #d4d4d8;
+  --primary: #4f46e5; /* indigo accent */
+  --primary-foreground: #ffffff;
+  --accent-text: #4338ca; /* indigo text on light surfaces */
+  --accent-soft: #eef2ff;
+  --ring: #4f46e5;
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --success-soft: #f0fdf4;
+  --warning-soft: #fffbeb;
+  --danger-soft: #fef2f2;
+  --radius: 0.875rem;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #f4f4f5;
+  --card: #111114;
+  --card-foreground: #f4f4f5;
+  --sidebar: #0d0d10;
+  --muted: #1c1c20;
+  --muted-foreground: #a1a1aa; /* 7.9:1 on the background */
+  --border: #27272a;
+  --input: #3f3f46;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --accent-text: #a5b4fc;
+  --accent-soft: #1e1b4b;
+  --ring: #818cf8;
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --success-soft: #052e16;
+  --warning-soft: #2a1d04;
+  --danger-soft: #2d0c0c;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent-text: var(--accent-text);
+  --color-accent-soft: var(--accent-soft);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-success-soft: var(--success-soft);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger-soft: var(--danger-soft);
+  --radius-xl: calc(var(--radius));
+  --radius-2xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  /* Visible focus ring everywhere */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Thin scrollbars */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+
+/* ---------- motion ---------- */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-up { animation: fade-up 180ms ease-out both; }
+/* Blinking caret at the end of the text while an answer streams */
+.is-streaming .prose-answer > p:last-child::after,
+.is-streaming .prose-answer > ul:last-child > li:last-child::after,
+.is-streaming .prose-answer > ol:last-child > li:last-child::after,
+.caret::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  border-radius: 2px;
+  background: var(--accent-text);
+  animation: blink 1s steps(1) infinite;
+}
+.shimmer-text {
+  background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 45%, var(--muted-foreground) 90%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .is-streaming .prose-answer > p:last-child::after, .caret::after { animation: none; }
+  .shimmer-text { animation: none; color: var(--muted-foreground); background: none; }
+}
+
+/* ---------- rendered markdown (answers) ---------- */
+.prose-answer > :first-child { margin-top: 0; }
+.prose-answer > :last-child { margin-bottom: 0; }
+.prose-answer p { margin: 0.75em 0; }
+.prose-answer ul, .prose-answer ol { margin: 0.75em 0; padding-left: 1.4em; }
+.prose-answer ul { list-style: disc; }
+.prose-answer ol { list-style: decimal; }
+.prose-answer li { margin: 0.3em 0; }
+.prose-answer li::marker { color: var(--muted-foreground); }
+.prose-answer h1, .prose-answer h2, .prose-answer h3 { font-weight: 600; line-height: 1.3; margin: 1.3em 0 0.5em; }
+.prose-answer h1 { font-size: 1.35rem; }
+.prose-answer h2 { font-size: 1.2rem; }
+.prose-answer h3 { font-size: 1.05rem; }
+.prose-answer a:not(.cite) { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.prose-answer strong { font-weight: 600; }
+.prose-answer blockquote { border-left: 3px solid var(--border); padding-left: 1em; color: var(--muted-foreground); margin: 0.75em 0; }
+.prose-answer hr { margin: 1.2em 0; }
+.prose-answer :not(pre) > code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.88em;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1em 0.4em;
+}
+.prose-answer table { width: 100%; border-collapse: collapse; font-size: 0.93em; }
+.prose-answer th, .prose-answer td { text-align: left; padding: 0.55em 0.8em; border-bottom: 1px solid var(--border); }
+.prose-answer th { font-weight: 600; background: var(--muted); }
+.prose-answer tr:last-child td { border-bottom: 0; }
