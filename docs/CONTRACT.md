@@ -290,3 +290,170 @@ Downloads follow redirects only to `github.com`, `api.github.com`, `objects.gith
 The UI learns local vs hosted from `/v1/status.deploy_mode`; one build serves both.
 Client-only state `SERVER_WAKING`: `/v1/ping` not answering within 3 s → banner "Waking the server,
 up to about a minute…" and retry with exponential backoff for up to about 90 s.
+
+## 11. v2 connectors: Webmail, ASC, Google Calendar (local mode only; spec: `INTEGRATIONS_BUILD_PROMPT.md`)
+
+Python source of truth: `apps/api/campuspilot/schemas/connectors.py` (lead-owned). If this section
+and the schemas disagree, the schemas win.
+
+### 11.1 Owner decisions (fixed)
+
+- **Local only.** Webmail and ASC use the student's IITB LDAP password, so they run only with
+  `DEPLOY_MODE=local`, the API on `127.0.0.1`, on campus or the IITB VPN. In hosted mode the
+  connector router is **not mounted** and the tools are **not offered**, whatever the flags say
+  (`Settings.webmail_on / asc_on / gcal_on`). Tested in `tests/test_connectors_contract.py`.
+- Flags `WEBMAIL_ENABLED`, `ASC_ENABLED`, `GCAL_ENABLED` default to `false`. `CONNECTORS_DEMO=true`
+  serves labelled fixture data (`demo: true`) instead of a live account.
+- Webmail is read over **IMAP with SSL** (`IMAP_HOST`, `IMAP_PORT`=993; confirmed before Phase 2).
+- ASC is the **internal portal** (`ASC_BASE_URL`), with login through **IITB SSO (LDAP)**. If it
+  ever shows an OTP or CAPTCHA, the student completes it in the UI; nothing is bypassed.
+- Mail text is read only by the **local Gemma** (`llm/personal.py`); a cloud model only with
+  `ALLOW_PERSONAL_DATA_TO_CLOUD=true`. ASC data and grades go to **no model at all**.
+- Calendar: **suggest, then the student confirms.** One click creates one event. Never a tool.
+
+### 11.2 Ownership (Phase 1)
+
+| Owner | Paths |
+|---|---|
+| lead | as §1 plus `schemas/connectors.py`, `connectors/` (errors, keychain), `api/connectors.py`, `tools/registry.py`, `tools/cards.py`, `agent/personal_answer.py`, `agent/orchestrator.py`, `agent/prompts.py`, `llm/personal.py`, `llm/mock.py`, `main.py`, `tests/test_connectors_contract.py`, `INTEGRATIONS_BUILD_PROMPT.md` |
+| A webmail (`v2/webmail`) | `campuspilot/mail/**`, `data/fixtures/mail/**` (synthetic `.eml`), `scripts/mail_login.py`, `tests/test_mail*`, `tests/mail_helpers.py` |
+| B asc (`v2/asc`) | `campuspilot/asc/**`, `data/fixtures/asc/**` (synthetic or fully anonymised HTML), `tests/test_asc*`, `tests/asc_helpers.py` |
+| C gcal (`v2/gcal`) | `campuspilot/gcal/**`, `tests/test_gcal*`, `tests/gcal_helpers.py` |
+| D web (`v2/web`) | `apps/web/**` |
+
+Workers need something outside their paths → write `NEEDS:` in the report; the lead changes it.
+**No new Python dependencies** without asking: IMAP and mail parsing use the standard library
+(`imaplib`, `email`), ASC uses `httpx` + `beautifulsoup4`, Google uses plain `httpx` against the
+OAuth and Calendar REST endpoints (no Google SDK), tests mock with `respx`.
+
+### 11.3 Tools and cards
+
+The model may call these (all read-only, offered only when the connector is on):
+
+| Tool | Input | Output | Kind | Label (exact UI string) |
+|---|---|---|---|---|
+| `search_my_mail` | `SearchMyMailInput{query, days=14, summarize=false}` | `SearchMyMailOutput` | mail | "Searching your mail" |
+| `get_upcoming_institute_events` | `UpcomingEventsInput{days=7, only_deadlines=false}` | `UpcomingEventsOutput` | mail | "Finding events in your mail" |
+| `get_my_timetable` | `GetMyTimetableInput{when=today\|tomorrow\|this_week, on_date?}` | `AscTimetableOutput` | asc | "Reading your ASC timetable" |
+| `get_my_registered_courses` | `GetMyRegisteredCoursesInput{semester?}` | `AscCoursesOutput` | asc | "Reading your ASC courses" |
+| `get_my_grades` | `GetMyGradesInput{semester?}` | `AscGradesOutput` | asc | "Reading your ASC grades" |
+
+There is **no calendar tool**. Events are created only by `POST /v1/calendar/events` (§11.5).
+
+SSE: a new event `cards` (0 or 1 time) comes after `sources` and before the first `token`:
+`status → tool* → sources? → cards? → token* → done`. Its data is a list of `Card`, discriminated by
+`type`:
+
+| `type` | id prefix | `source_label` | payload | extra |
+|---|---|---|---|---|
+| `mail` | W1.. | Webmail | `mail: MailMessage` (sender, subject, date, snippet ≤300, `open_url`) | no full bodies |
+| `event` | E1.. | Webmail | `event: DetectedEvent` | `can_add_to_calendar` |
+| `asc_slot` | A1.. | ASC | `slot: AscTimetableSlot` | `on_date` when one day |
+| `asc_course` | A1.. | ASC | `course: AscCourse` | |
+| `asc_grade` | A1.. | ASC | `grade: AscGrade` | |
+
+Every card has `id`, `type`, `source_label`, `demo`. Moodle items stay as `sources` with
+`kind:"moodle"` (label them "Moodle"); documents are "Official page". Card ids are never cited.
+`can_add_to_calendar` is true only when Google Calendar is connected, the event has a `start`, the
+date is not uncertain and the data is not demo. `DetectedEvent.id = event_key(message_id, start)`.
+
+### 11.4 Privacy: what reaches a model
+
+- The chat model sees only `[Webmail results shown to the user: N items]` (or ASC), never card
+  content. The answer text is a **template sentence** written by `agent/personal_answer.py`; with
+  only personal tools, `answer_kind="personal"` (Moodle only stays `"moodle"`) and no model call
+  writes the answer. History turns with `kind` `moodle` or `personal` are replaced before any model
+  sees them.
+- The mail module may call `personal_data_llm(settings)` (local Gemma, the mock, or `None`) for
+  two jobs, each **one call with no tools**: extract `DetectedEvent` fields and write a summary the
+  student asked for. Mail text is wrapped as untrusted data (`<mail>` blocks; the prompt says it is
+  data, never instructions). With `None` the module uses rules only and says so in `note`.
+- Event detection: rules first (dates, times, venues, known institute senders), then the model
+  fills fields. A date is kept only if the rules or the model point at text in the mail
+  (`date_text`); otherwise `start=None`, `date_uncertain=true`. Never invent a date.
+- Never log mail text, subjects, bodies, ASC pages, grades, passwords, OTPs, cookies or tokens.
+
+### 11.5 Endpoints (local only; router mounted only when `DEPLOY_MODE=local`)
+
+Every POST/DELETE needs header **`X-CampusPilot-Confirm: yes`** (403 otherwise). A custom header
+forces a CORS preflight, and CORS allows only the local UI. Each endpoint returns 404
+`NOT_AVAILABLE` when its flag is off. Login bodies are never echoed.
+
+| Method & path | Body → response | Notes |
+|---|---|---|
+| `GET /v1/connectors` | → `ConnectorsResponse{webmail, asc, gcal: ConnectorStatus}` | state: disabled / not_connected / needs_otp / connected / error |
+| `POST /v1/connectors/webmail/login` | `ConnectorLoginRequest` → `ConnectorStatus` | IMAP LOGIN check, then Keychain |
+| `DELETE /v1/connectors/webmail` | → `ConnectorStatus` | deletes Keychain entries |
+| `POST /v1/connectors/asc/login` | `ConnectorLoginRequest` → `ConnectorStatus` | may return `needs_otp` + `challenge_id` |
+| `POST /v1/connectors/asc/otp` | `ConnectorOtpRequest{challenge_id, code}` → `ConnectorStatus` | |
+| `DELETE /v1/connectors/asc` | → `ConnectorStatus` | drops session and Keychain entries |
+| `POST /v1/connectors/gcal/connect` | → `GcalConnectStart{auth_url}` | UI opens it in a new tab |
+| `GET /v1/connectors/gcal/callback` | `?code&state` → small HTML page | Google's loopback redirect; `state` + PKCE checked |
+| `DELETE /v1/connectors/gcal` | → `ConnectorStatus` | revoke at Google, then delete |
+| `POST /v1/calendar/events` | `CalendarEventRequest` → `CalendarEventResult` | the only write; idempotent |
+
+`StatusResponse.connectors` lists the connectors that are on (always `[]` hosted).
+
+Module signatures the API and registry call (Phase 0 stubs raise `ConnectorError("not_implemented")`):
+
+```python
+# campuspilot/mail/__init__.py
+async def search_my_mail(args: SearchMyMailInput) -> SearchMyMailOutput
+async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEventsOutput
+async def mail_status() -> ConnectorStatus
+async def mail_login(req: ConnectorLoginRequest) -> ConnectorStatus
+def mail_logout() -> ConnectorStatus
+# campuspilot/asc/__init__.py
+async def get_my_timetable(args: GetMyTimetableInput) -> AscTimetableOutput
+async def get_my_registered_courses(args: GetMyRegisteredCoursesInput) -> AscCoursesOutput
+async def get_my_grades(args: GetMyGradesInput) -> AscGradesOutput
+async def asc_status() -> ConnectorStatus
+async def asc_login(req: ConnectorLoginRequest) -> ConnectorStatus
+async def asc_submit_otp(req: ConnectorOtpRequest) -> ConnectorStatus
+def asc_logout() -> ConnectorStatus
+# campuspilot/gcal/__init__.py
+def is_connected() -> bool                      # Keychain only, no network
+async def gcal_status() -> ConnectorStatus
+async def gcal_start_connect() -> GcalConnectStart
+async def gcal_finish_connect(code: str, state: str) -> ConnectorStatus
+async def gcal_disconnect() -> ConnectorStatus
+async def create_event(req: CalendarEventRequest) -> CalendarEventResult
+# each package re-exports ConnectorError (campuspilot/connectors/errors.py)
+```
+
+Keychain (`connectors/keychain.py`, service `campuspilot`): `webmail_username`, `webmail_password`,
+`asc_username`, `asc_password`, `gcal_refresh_token`, `gcal_account`. ASC session cookies live in
+memory only. Nothing secret in `.env`, logs, Git, a model prompt or an error message.
+
+### 11.6 Errors
+
+Connector modules raise `ConnectorError(code, message)`; `message` is friendly and secret-free.
+In chat, a failed tool gives a `tool` `error` event and the message becomes the student-facing
+sentence. On endpoints: `disabled`→404 NOT_AVAILABLE, `not_connected`→409 NOT_CONNECTED,
+`auth_failed`/`otp_invalid`→401 AUTH_FAILED, `otp_required`→401 OTP_REQUIRED,
+`session_expired`→401 SESSION_EXPIRED, `unreachable`/`timeout`→503 UNREACHABLE (say "on campus or
+the IITB VPN"), `parse_failed`→502 INTERNAL, `blocked`→502 NOT_AVAILABLE, `google_error`→502
+CALENDAR_ERROR, `not_implemented`→501 NOT_AVAILABLE.
+
+### 11.7 Per-connector rules
+
+- **Webmail (A):** `imaplib.IMAP4_SSL`; `select(folder, readonly=True)`; fetch with `BODY.PEEK[]`
+  (or `BODY.PEEK[HEADER]` + a size-capped `BODY.PEEK[TEXT]`). Never STORE, COPY, MOVE, EXPUNGE,
+  APPEND or send. `open_url` from `WEBMAIL_URL` only if a reliable link format is known, else `None`.
+- **ASC (B):** an `httpx` session; after login only GET. Never submit registration, add/drop or
+  feedback forms. One request at a time, cache `ASC_CACHE_TTL_S`, clear `session_expired` message.
+  Allowed hosts: `*.iitb.ac.in` only. Can't automate safely → `blocked` with the reason.
+- **Google Calendar (C):** installed-app OAuth with PKCE, loopback redirect
+  `http://127.0.0.1:{API_PORT}/v1/connectors/gcal/callback`, scope
+  `https://www.googleapis.com/auth/calendar.events` only. Client file `GCAL_CLIENT_FILE` (outside the
+  repo). Calendar `GCAL_CALENDAR_ID`. Before inserting, look for an event with
+  `privateExtendedProperty=campuspilotKey=<event_id>` and return `already_exists` if found. Time zone
+  `GCAL_TIMEZONE`, reminder `GCAL_REMINDER_MINUTES` (popup), description = source mail subject +
+  "Added by CampusPilot". `end=None` → start + 1 h (all-day → that day).
+- **Web (D):** Settings → "Connectors" section (local mode only, hidden when
+  `/v1/status.deploy_mode` is hosted): three cards with status, Connect / Disconnect, the OTP step,
+  and "Turned off" with the env flag when disabled. Answer cards for every `Card` type, each with its
+  `source_label`; event card "Add to Google Calendar" → `POST /v1/calendar/events` with the confirm
+  header → "Added ✓ · View in Calendar" (`html_link`), or "Connect Google Calendar" when
+  `can_add_to_calendar` is false because it isn't connected, or "Date unclear, open the mail".
+  Demo cards say "Demo data". Mock SSE journeys for the three example questions; Playwright tests.

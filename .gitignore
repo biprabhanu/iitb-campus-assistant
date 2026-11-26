@@ -264,3 +264,10 @@ apps/web/playwright/.cache/
 # sed -i backups on macOS
 *-E
 *.bak
+
+# v2 connectors: OAuth client files, real mail and saved ASC pages never go in Git.
+client_secret*.json
+*google_client*.json
+.campuspilot/
+*.eml
+!data/fixtures/mail/*.eml

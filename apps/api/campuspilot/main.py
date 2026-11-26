@@ -14,6 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from campuspilot.api import connectors as connector_routes
 from campuspilot.api.errors import ApiError
 from campuspilot.api.middleware import LimitsAndLogMiddleware
 from campuspilot.api.ratelimit import RateLimiter
@@ -72,6 +73,7 @@ CORS_HEADERS = [
     "X-LLM-Model",
     "X-Moodle-Token",
     "X-Moodle-Ical-Url",
+    connector_routes.CONFIRM_HEADER,  # v2 connectors (local only)
 ]
 
 
@@ -127,6 +129,10 @@ def create_app() -> FastAPI:
         allow_headers=CORS_HEADERS,
     )
     app.include_router(router)
+    # v2 connectors (Webmail, ASC, Google Calendar) exist only in local mode: in hosted mode
+    # their routes are not even registered (CONTRACT §11.1; tests/test_connectors_contract.py).
+    if not settings.hosted:
+        app.include_router(connector_routes.router)
     return app
 
 

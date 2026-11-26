@@ -52,13 +52,37 @@ def _route(text: str) -> list[ToolCall]:
             )
         ]
     if re.search(r"\bdue\b|deadline", low):
-        return [ToolCall("get_my_deadlines", {"days_ahead": 7})]
+        # The mail call is dropped by the orchestrator when Webmail is off (not offered).
+        return [
+            ToolCall("get_my_deadlines", {"days_ahead": 7}),
+            ToolCall("get_upcoming_institute_events", {"days": 7, "only_deadlines": True}),
+        ]
+    connector = _route_connectors(low, text)
+    if connector:
+        return connector
     if "hostel" in low and re.search(r"maintenance|repair|complaint", low):
         return [
             ToolCall("get_official_link", {"topic": "hostel maintenance"}),
             ToolCall("search_campus_docs", {"query": "hostel maintenance complaint"}),
         ]
     return [ToolCall("search_campus_docs", {"query": text[:300]})]
+
+
+def _route_connectors(low: str, text: str) -> list[ToolCall]:
+    """v2 connector questions (only reached when the connectors are on; see CONTRACT §11)."""
+    if "event" in low and re.search(r"mail|institute", low):
+        return [ToolCall("get_upcoming_institute_events", {"days": 7})]
+    if re.search(r"timetable|\bclasses\b", low):
+        when = "tomorrow" if "tomorrow" in low else "this_week" if "week" in low else "today"
+        return [ToolCall("get_my_timetable", {"when": when})]
+    if re.search(r"\bgrades?\b|\bspi\b|\bcpi\b", low):
+        return [ToolCall("get_my_grades", {})]
+    if "registered" in low or ("asc" in low and "course" in low):
+        return [ToolCall("get_my_registered_courses", {})]
+    if re.search(r"\bmails?\b|\bemails?\b|\binbox\b", low):
+        args = {"query": text[:200], "days": 14, "summarize": "summar" in low}
+        return [ToolCall("search_my_mail", args)]
+    return []
 
 
 def _unanswerable(text: str) -> bool:

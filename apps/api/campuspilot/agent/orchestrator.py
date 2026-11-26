@@ -4,7 +4,11 @@
 turns them into Server-Sent Events; tests can read them directly.
 
 Steps: ask the model which tools to use -> run them (validated, time-limited, max 4)
--> send `sources` -> stream the answer (abstain prefix and bad citations stripped) -> `done`.
+-> send `sources` -> send `cards` (v2 Webmail / ASC) -> stream the answer (abstain prefix and
+bad citations stripped) -> `done`.
+
+Personal data (Moodle, Webmail, ASC) never goes back to the chat model: those tools return
+cards for the UI and a template sentence written by our code; the model only learns a count.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from pydantic import ValidationError
 from campuspilot.agent.citations import CitationFilter
 from campuspilot.agent.clarify import needs_clarification
 from campuspilot.agent.moodle_answer import moodle_sentence
+from campuspilot.agent.personal_answer import personal_sentence
 from campuspilot.agent.prompts import build_short_prompt, build_system_prompt
 from campuspilot.config import Settings, get_settings
 from campuspilot.llm.base import (
@@ -46,8 +51,10 @@ from campuspilot.schemas.chat import (
     ToolEvent,
 )
 from campuspilot.schemas.tools import GetOfficialLinkInput, GetOfficialLinkOutput
+from campuspilot.tools.cards import number_cards
 from campuspilot.tools.evidence import EvidenceBudget, EvidenceStore
 from campuspilot.tools.registry import (
+    PERSONAL_KINDS,
     TOOLS,
     AskClarificationInput,
     ToolFailure,
@@ -88,10 +95,14 @@ class ToolOutcome:
     limitation: str | None = None
     links: list[OfficeLink] = field(default_factory=list)
     follow_up: FollowUp | None = None
-    moodle_text: str | None = None  # the template sentence for a Moodle tool (success or failure)
+    # The template sentence for a personal-data tool (Moodle, Webmail, ASC), success or failure.
+    personal_text: str | None = None
+    cards: list[Any] = field(default_factory=list)  # Webmail / ASC cards (ids not yet numbered)
 
 
 MOODLE_HISTORY_TEXT = "[Moodle results were shown to the user]"
+PERSONAL_HISTORY_TEXT = "[Results from the student's own accounts were shown to the user]"
+_COUNT_LABEL = {"moodle": "Moodle", "mail": "Webmail", "asc": "ASC"}
 
 
 # ---------- small helpers ----------
@@ -176,9 +187,9 @@ def _note(text: str) -> str:
 
 
 def _failed(spec: ToolSpec, note: str, message: str) -> ToolOutcome:
-    """A tool that did not finish. A failed Moodle tool tells the student itself."""
-    if spec.kind == "moodle":
-        return ToolOutcome(False, _note(note), moodle_text=message)
+    """A tool that did not finish. A failed personal-data tool tells the student itself."""
+    if spec.kind in PERSONAL_KINDS:
+        return ToolOutcome(False, _note(note), personal_text=message)
     return ToolOutcome(False, _note(note), message)
 
 
@@ -216,6 +227,13 @@ def _success_outcome(
         return ToolOutcome(
             True, "", follow_up=FollowUp(question=output.question, options=output.options)
         )
+    if spec.kind in ("mail", "asc"):
+        # v2: cards go to the UI; the model only learns how many there were.
+        assert spec.to_cards is not None
+        cards = spec.to_cards(output)
+        text = personal_sentence(spec.name, args, output)
+        content = f"[{_COUNT_LABEL[spec.kind]} results shown to the user: {len(cards)} items]"
+        return ToolOutcome(True, content, personal_text=text, cards=cards)
     assert spec.to_evidence is not None
     items, note = spec.to_evidence(output)
     if spec.kind == "moodle":
@@ -223,7 +241,7 @@ def _success_outcome(
         added = store.add(items)
         text = moodle_sentence(spec.name, args, output, datetime.now(UTC))
         content = f"[Moodle results shown to the user: {len(added)} items]"
-        return ToolOutcome(True, content, moodle_text=text)
+        return ToolOutcome(True, content, personal_text=text)
     if budget is not None:
         items = budget.fit(items)
     added = store.add(items)
@@ -337,7 +355,7 @@ async def _run(
         if hosted
         else None
     )
-    specs = offered_tools()
+    specs = offered_tools(settings)
     precheck_on = settings.clarify_precheck and llm.mode != "mock"
     if precheck_on:
         # The pre-check owns the "ask or not" decision; offering ask_clarification to the
@@ -351,13 +369,18 @@ async def _run(
     if hosted:
         system = build_short_prompt(today)
     else:
-        system = build_system_prompt(today, clarify_tool="ask_clarification" in by_name)
+        connector_tools = [s.name for s in specs if s.kind in ("mail", "asc")]
+        system = build_system_prompt(
+            today, clarify_tool="ask_clarification" in by_name, connector_tools=connector_tools
+        )
     messages: list[Message] = [{"role": "system", "content": system}]
     messages += [{"role": t.role, "content": t.content} for t in history]
     messages.append({"role": "user", "content": request.message})
 
     executed = 0
-    moodle_texts: list[str] = []
+    moodle_texts: list[str] = []  # template sentences of every personal-data tool
+    cards: list[Any] = []
+    card_counters: dict[str, int] = {}
     final_reply: LLMReply | None = None
     follow_up: FollowUp | None = None
 
@@ -421,8 +444,9 @@ async def _run(
             )
             state = "done" if outcome.ok else "error"
             yield "tool", ToolEvent(name=spec.name, label=spec.label, state=state).model_dump()
-            if outcome.moodle_text:
-                moodle_texts.append(outcome.moodle_text)
+            if outcome.personal_text:
+                moodle_texts.append(outcome.personal_text)
+            cards.extend(number_cards(outcome.cards, card_counters))
             if outcome.limitation:
                 limitations.append(outcome.limitation)
             office_links.extend(outcome.links)
@@ -471,6 +495,8 @@ async def _run(
     trace.chunk_ids = store.chunk_ids()
     if store.items:
         yield "sources", [s.model_dump(mode="json") for s in store.sources()]
+    if cards:
+        yield "cards", [c.model_dump(mode="json") for c in cards]
 
     if follow_up is not None:
         for piece in chunk_text(follow_up.question):
@@ -489,8 +515,10 @@ async def _run(
         text = " ".join(moodle_texts)
         for piece in chunk_text(text if not doc_ran else text + "\n\n"):
             yield "token", {"text": piece}
-        if not doc_ran:  # Moodle only: our sentence is the whole answer, no model call
-            done = DoneEvent(limitations=limitations, answer_kind="moodle", latency_ms=_ms(started))
+        if not doc_ran:  # personal data only: our sentence is the whole answer, no model call
+            v2_ran = any(TOOLS[n].kind in ("mail", "asc") for n in trace.tools if n in TOOLS)
+            kind = "personal" if v2_ran else "moodle"
+            done = DoneEvent(limitations=limitations, answer_kind=kind, latency_ms=_ms(started))
             yield "done", done.model_dump(mode="json")
             return
 
@@ -541,9 +569,11 @@ async def _answer_pieces(
 
 
 def _hide_moodle(turn: ChatTurn) -> ChatTurn:
-    """A past answer built from Moodle data must not reach the model."""
+    """A past answer built from Moodle, Webmail or ASC data must not reach the model."""
     if turn.kind == "moodle":
         return turn.model_copy(update={"content": MOODLE_HISTORY_TEXT})
+    if turn.kind == "personal":
+        return turn.model_copy(update={"content": PERSONAL_HISTORY_TEXT})
     return turn
 
 

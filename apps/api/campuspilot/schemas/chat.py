@@ -1,7 +1,8 @@
 """Chat request and SSE event models (docs/CONTRACT.md §2 and §3).
 
 The SSE stream from `POST /v1/chat` sends, in order:
-  status -> (tool start/done)* -> sources? -> token* -> done
+  status -> (tool start/done)* -> sources? -> cards? -> token* -> done
+(`cards` is v2, local mode only: Webmail / ASC cards, CONTRACT §11.)
 or, at any point, a single `error` event that ends the stream.
 """
 
@@ -19,7 +20,9 @@ ToolState = Literal["start", "done", "error"]
 SourceKind = Literal["doc", "moodle"]
 Freshness = Literal["current", "needs_review", "unknown"]
 # moodle = a template sentence written by our code over Moodle results (no LLM wording).
-AnswerKind = Literal["answer", "clarify", "abstain", "moodle"]
+# personal = the same for v2 connectors (Webmail, ASC, possibly with Moodle): our sentence plus
+#            cards. The browser echoes it in history and the server hides that content (§11.4).
+AnswerKind = Literal["answer", "clarify", "abstain", "moodle", "personal"]
 ErrorCode = Literal[
     "MODEL_OFFLINE",
     "TIMEOUT",
@@ -33,6 +36,13 @@ ErrorCode = Literal[
     "PROVIDER_TIMEOUT",
     "PROVIDER_ERROR",
     "NOT_AVAILABLE",
+    # v2 connectors (local only, CONTRACT §11.6); used by the /v1/connectors endpoints:
+    "NOT_CONNECTED",
+    "AUTH_FAILED",
+    "OTP_REQUIRED",
+    "UNREACHABLE",
+    "SESSION_EXPIRED",
+    "CALENDAR_ERROR",
 ]
 
 
@@ -46,6 +56,7 @@ class ChatTurn(BaseModel):
     content: str = Field(max_length=8000)
     # The browser echoes the answer_kind of assistant turns. Turns with kind="moodle" hold
     # personal data, so the server replaces their content before any LLM sees the history.
+    # The same goes for kind="personal" (v2 connectors).
     kind: AnswerKind | None = None
 
 
@@ -158,6 +169,9 @@ class StatusResponse(BaseModel):
     index: Literal["release", "local", "fallback", "missing"] = "local"
     index_version: str | None = None  # e.g. "index-2026-11-30", or "fixtures"
     providers: list[ProviderInfo] = Field(default_factory=list)  # hosted only
+    # v2: connectors turned on in .env (local only; always empty in hosted mode). Their live
+    # state comes from GET /v1/connectors.
+    connectors: list[Literal["webmail", "asc", "gcal"]] = Field(default_factory=list)
 
 
 class LLMCheckResponse(BaseModel):

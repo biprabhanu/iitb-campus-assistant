@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-SYSTEM_PROMPT_VERSION = "2026-11-27.1"
+SYSTEM_PROMPT_VERSION = "2026-11-27.2"
 
 _TEMPLATE = """You are CampusPilot, an independent assistant for IIT Bombay students. \
 You are not an official IIT Bombay service. Today's date is {today}.
@@ -50,12 +50,37 @@ _NO_CLARIFY_BULLET = (
 )
 
 
-def build_system_prompt(today: date | None = None, clarify_tool: bool = True) -> str:
+# v2 connectors (local only). Added only when at least one of these tools is offered, so the
+# prompt (and the eval numbers) stay the same for anyone who leaves the connectors off.
+_CONNECTOR_BULLET = (
+    "- The student's own accounts: {tools}. These tools only fetch the student's own data for "
+    "display; you never see the results, so never describe or guess them.{due} Mail and ASC "
+    "are read-only: never "
+    "claim you sent, changed, registered or added anything. Calendar events are added only by "
+    "the student clicking Add on an event card.\n"
+)
+
+
+def build_system_prompt(
+    today: date | None = None,
+    clarify_tool: bool = True,
+    connector_tools: list[str] | None = None,
+) -> str:
     text = _TEMPLATE.format(today=(today or date.today()).isoformat())
     if not clarify_tool:
         start = text.index("- The one exception: call ask_clarification")
         end = text.index("- Sources have a tier")
         text = text[:start] + _NO_CLARIFY_BULLET + text[end:]
+    if connector_tools:
+        due = (
+            ' For "what\'s due" questions, call get_my_deadlines and also'
+            " get_upcoming_institute_events with only_deadlines=true."
+            if "get_upcoming_institute_events" in connector_tools
+            else ""
+        )
+        bullet = _CONNECTOR_BULLET.format(tools=", ".join(connector_tools), due=due)
+        at = text.index("- Be concise")
+        text = text[:at] + bullet + text[at:]
     return text
 
 

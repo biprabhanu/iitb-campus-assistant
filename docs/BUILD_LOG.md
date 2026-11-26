@@ -51,3 +51,14 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Cosmetic: ingest logs `via=mac` on GitHub runners (the fetched_via default label), not a fetch from the Mac.
 - Groq probe with the owner's test key (2026-11-26): provisional defaults `llama-3.1-8b-instant` / `llama-3.3-70b-versatile` no longer listed. Chosen: router `openai/gpt-oss-20b`, answer `openai/gpt-oss-120b` (tool-call probe pass; separate models spread the 8,000 tokens/min per-model budget; 1,000 requests/day each). Live local hosted run: smoke 6/6 pass (first token 1.7 s, cited calendar answer), `/v1/llm/check` ok, Moodle template turn ok, mess-menu abstain ok; "UG entrant documents" abstained (Gemma answered it) — to measure in the hosted acceptance run. Real key absent from the API log.
 - Key-handling incident (no exposure): the owner first pasted the key into the tracked `.env.example`; the frontend worker moved it to the gitignored `.env` and restored `.env.example` before any commit. Verified: the real key is in no commit on any ref (local or origin); the only key-shaped strings in history are the two known fakes.
+
+## v2 integrations (INTEGRATIONS_BUILD_PROMPT.md), Phase 0 (27 Nov 2026, high effort)
+
+- Audit: `main` at b3dde6c, `make test` green (243 pytest, 20 Playwright). The hosted pilot (Render + Vercel) is live and stays as it is; v2 is local-only.
+- Owner answers: ASC = internal portal (campus/VPN), login via IITB SSO with LDAP; webmail = IMAP over SSL; mail read by the local Gemma only; Google OAuth client set up later (Worker C builds against a mocked API). ASC login URL and IMAP host/port to be confirmed before Phase 2 (defaults `asc.iitb.ac.in`, `imap.iitb.ac.in:993` are configurable placeholders, not verified).
+- Personal data follows the Moodle rule (§10.4): mail and ASC results go to the UI as a new `cards` SSE event plus a template sentence; the chat model only sees a count. One exception, by design: event extraction and requested summaries use the local model in separate tool-less calls (`llm/personal.py`), so an injected mail has no tool to trigger.
+- New `answer_kind="personal"` (Moodle-only stays `"moodle"` so the hosted UI is unchanged); history turns of both kinds are hidden from the model.
+- Hosted gating is structural: the connector router isn't mounted and the tools aren't offered when `DEPLOY_MODE=hosted`, whatever the flags say.
+- Calendar writes are protected by a required `X-CampusPilot-Confirm: yes` header (forces a CORS preflight, so another site can't trigger logins or events) and are never a model tool.
+- No new dependencies: imaplib/email, httpx + BeautifulSoup, Google REST over httpx with PKCE (no Google SDK, keeps the venv and image small).
+- The lead writes the shared plumbing (registry, orchestrator, routes, cards, sentences, mock LLM) in Phase 0 so workers only touch their own packages; Phase 0 module stubs keep the exact signatures.

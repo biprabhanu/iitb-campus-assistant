@@ -97,6 +97,31 @@ class Settings(BaseSettings):
     index_tag: str = ""
     index_download_timeout_s: float = 30.0
 
+    # --- v2 connectors (docs/CONTRACT.md §11). Local mode only: every one of them is forced
+    # off when DEPLOY_MODE=hosted, whatever these flags say (see the *_on properties). ---
+    webmail_enabled: bool = False
+    asc_enabled: bool = False
+    gcal_enabled: bool = False
+    # Serve clearly labelled fixture data for Webmail / ASC instead of a live account
+    # (mock-dev, screenshots). Off by default so a real user never sees fake mail.
+    connectors_demo: bool = False
+    # Webmail over IMAP (read-only). Host and port are confirmed by the owner before Phase 2.
+    imap_host: str = "imap.iitb.ac.in"
+    imap_port: int = 993
+    imap_folder: str = "INBOX"
+    imap_timeout_s: float = 20.0
+    mail_max_scan: int = 200  # most recent mails looked at per question
+    webmail_url: str = "https://webmail.iitb.ac.in"  # base for "open this mail" links
+    # ASC (internal portal: campus network or IITB VPN; login through IITB SSO with LDAP).
+    asc_base_url: str = "https://asc.iitb.ac.in"
+    asc_timeout_s: float = 20.0
+    asc_cache_ttl_s: int = 300
+    # Google Calendar (OAuth "Desktop app" client; the JSON file stays outside the repo).
+    gcal_client_file: Path = Path("~/.campuspilot/google_client.json")
+    gcal_calendar_id: str = "primary"  # Phase 2 live tests use a separate test calendar
+    gcal_timezone: str = "Asia/Kolkata"
+    gcal_reminder_minutes: int = 30
+
     # One short extra model call that decides "ask a clarifying question?" (agent/clarify.py).
     clarify_precheck: bool = True
     # After a document search, also look up registry portal links (agent/orchestrator.py).
@@ -105,6 +130,24 @@ class Settings(BaseSettings):
     @property
     def hosted(self) -> bool:
         return self.deploy_mode == "hosted"
+
+    # A connector is on only when its flag is set AND we are in local mode.
+    @property
+    def webmail_on(self) -> bool:
+        return self.webmail_enabled and not self.hosted
+
+    @property
+    def asc_on(self) -> bool:
+        return self.asc_enabled and not self.hosted
+
+    @property
+    def gcal_on(self) -> bool:
+        return self.gcal_enabled and not self.hosted
+
+    @property
+    def enabled_connectors(self) -> list[str]:
+        flags = {"webmail": self.webmail_on, "asc": self.asc_on, "gcal": self.gcal_on}
+        return [name for name, on in flags.items() if on]
 
     @property
     def all_cors_origins(self) -> list[str]:
@@ -122,6 +165,11 @@ class Settings(BaseSettings):
     def _resolve_against_repo_root(cls, value: Path) -> Path:
         # Relative paths in .env mean "relative to the repo root", whatever the cwd is.
         return value if value.is_absolute() else REPO_ROOT / value
+
+    @field_validator("gcal_client_file", mode="after")
+    @classmethod
+    def _expand_home(cls, value: Path) -> Path:
+        return value.expanduser()
 
 
 @lru_cache

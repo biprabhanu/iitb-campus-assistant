@@ -150,6 +150,7 @@ async def status(request: Request) -> StatusResponse:
         moodle_mode=moodle_mode,
         sources_indexed=sources,
         mode=mode,  # type: ignore[arg-type]
+        connectors=settings.enabled_connectors,  # type: ignore[arg-type]
         **common,  # type: ignore[arg-type]
     )
 
