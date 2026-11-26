@@ -249,13 +249,23 @@ async def test_personal_history_turns_are_hidden_from_the_model(monkeypatch) -> 
 
 
 async def test_connector_failure_tells_the_student_without_secrets(monkeypatch) -> None:
+    import campuspilot.asc
+    from campuspilot.connectors.errors import ConnectorError
+
     _env(monkeypatch, ASC_ENABLED="true")
+    message = "ASC can't be reached. Are you on the campus network or the IITB VPN?"
+
+    async def unreachable(args):  # independent of how Worker B's module behaves
+        raise ConnectorError("unreachable", message)
+
+    monkeypatch.setattr(campuspilot.asc, "get_my_timetable", unreachable)
     llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_timetable", when="tomorrow")])])
     events, _ = await _run(llm, "what's my timetable tomorrow?")
     assert ("get_my_timetable", "error") in [
         (d["name"], d["state"]) for n, d in events if n == "tool"
     ]
-    assert "ASC is not built yet." in answer_text(events)  # the stub's friendly message
+    assert message in answer_text(events)  # the module's friendly message reaches the student
+    assert done_of(events)["answer_kind"] == "personal"
 
 
 # ---------- schemas ----------
