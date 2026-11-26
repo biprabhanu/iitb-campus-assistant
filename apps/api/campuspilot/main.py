@@ -17,6 +17,23 @@ from campuspilot.config import get_settings
 log = logging.getLogger("campuspilot")
 
 
+def _setup_logging() -> None:
+    """Print our own one-line-per-request logs (INFO) to stderr next to uvicorn's.
+
+    Only the "campuspilot" logger is configured; what it logs never includes message text,
+    tokens or Moodle content (see api/routes.py `_log_line`)."""
+    if log.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
+
+_setup_logging()
+
+
 def _json_error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"code": code, "message": message}, status_code=status)
 
