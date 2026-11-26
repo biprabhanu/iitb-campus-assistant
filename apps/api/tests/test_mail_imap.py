@@ -91,26 +91,18 @@ async def test_search_since_uses_english_month_names(monkeypatch) -> None:
     assert imap_date(date(2026, 3, 4)) == "04-Mar-2026"
 
 
-async def test_query_uses_server_side_text_search(monkeypatch) -> None:
+async def test_query_is_matched_client_side_never_by_server_text_search(monkeypatch) -> None:
+    # IITB's server takes 20+ s for a TEXT search on a new word, so we only search by date.
     server = _server(4)
     install_fake_imap(monkeypatch, server)
     result = await scan_mail(get_settings(), "user", "secret-pw", days=14, query="hackathon")
-    assert "TEXT" in server.searches[0]
-    assert sorted(server.fetched) == [1, 3]  # only the hits were fetched
-    assert {m.message.uid for m in result.mails} == {"1", "3"}
-
-
-async def test_query_falls_back_to_client_side_when_the_server_refuses(monkeypatch) -> None:
-    server = _server(4)
-    server.refuse_text = True
-    install_fake_imap(monkeypatch, server)
-    result = await scan_mail(get_settings(), "user", "secret-pw", days=14, query="hackathon")
+    assert all(args[0] == "SINCE" and "TEXT" not in args for args in server.searches)
     assert {m.message.uid for m in result.mails} == {"1", "3"}
     assert result.scanned == 4
     server.assert_read_only()
 
 
-async def test_a_phrase_with_no_server_hit_is_retried_word_by_word(monkeypatch) -> None:
+async def test_query_words_may_sit_apart(monkeypatch) -> None:
     server = _server(4)
     install_fake_imap(monkeypatch, server)
     result = await scan_mail(get_settings(), "user", "secret-pw", days=14, query="body hackathon")
@@ -118,11 +110,11 @@ async def test_a_phrase_with_no_server_hit_is_retried_word_by_word(monkeypatch) 
     assert {m.message.uid for m in result.mails} == {"1", "3"}
 
 
-async def test_non_ascii_query_declares_a_charset(monkeypatch) -> None:
+async def test_non_ascii_query_needs_no_server_charset(monkeypatch) -> None:
     server = _server(2)
     install_fake_imap(monkeypatch, server)
     await scan_mail(get_settings(), "user", "secret-pw", days=14, query="café")
-    assert server.searches[0][:2] == ("CHARSET", "UTF-8")
+    assert all("CHARSET" not in args for args in server.searches)
 
 
 @pytest.mark.parametrize(

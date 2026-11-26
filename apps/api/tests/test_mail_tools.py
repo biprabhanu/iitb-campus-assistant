@@ -381,3 +381,31 @@ async def test_demo_events_are_in_the_coming_days_and_labelled(demo_on) -> None:
 async def test_demo_only_deadlines(demo_on) -> None:
     out = await get_upcoming_institute_events(UpcomingEventsInput(days=7, only_deadlines=True))
     assert out.events and {e.category for e in out.events} == {"deadline"}
+
+
+def test_undated_events_only_from_recent_mail_and_capped() -> None:
+    from datetime import timedelta
+
+    from campuspilot.mail.tools import MAX_UNCLEAR, UNCLEAR_MAIL_DAYS, _keep_recent_unclear
+    from campuspilot.schemas.connectors import DetectedEvent, event_key
+
+    now = datetime.now(UTC)
+
+    def ev(i: int, start=None, age_days: float = 0.5) -> DetectedEvent:
+        return DetectedEvent(
+            id=event_key(f"<{i}@x>", start),
+            message_id=f"<{i}@x>",
+            title=f"Item {i}",
+            start=start,
+            date_uncertain=start is None,
+            confidence=0.5,
+            mail_date=now - timedelta(days=age_days),
+        )
+
+    dated = ev(0, start=now + timedelta(days=1), age_days=10)  # old mail, clear date: kept
+    old_unclear = ev(1, age_days=UNCLEAR_MAIL_DAYS + 1)  # dropped
+    fresh = [ev(10 + i, age_days=0.1 * i) for i in range(MAX_UNCLEAR + 3)]
+    kept = _keep_recent_unclear([dated, *fresh, old_unclear], now)
+    assert kept[0] is dated
+    assert old_unclear not in kept
+    assert len([e for e in kept if e.start is None]) == MAX_UNCLEAR

@@ -30,6 +30,11 @@ from campuspilot.schemas.connectors import (
 MAX_RESULTS = 20  # SearchMyMailOutput allows at most 20 messages
 EVENT_SCAN_DAYS = 14  # how far back we read mail when looking for events
 MAX_MODEL_CALLS = 12  # at most this many mails go to the local model per question
+# Events with no clear date: keep only those from recent mail, and only a few. Measured on a
+# real inbox (27 Nov 2026, rules only): 26 of 31 "upcoming" items had no clear date, most from
+# mails a week or two old that were very likely about past events.
+UNCLEAR_MAIL_DAYS = 3
+MAX_UNCLEAR = 5
 
 NOTE_RULES_ONLY = "Found with simple rules; the local model is offline."
 NOTE_NO_SUMMARY = "No summary: the local model is offline."
@@ -114,6 +119,14 @@ def _sorted(events: list[DetectedEvent]) -> list[DetectedEvent]:
     return dated + unclear
 
 
+def _keep_recent_unclear(events: list[DetectedEvent], now: datetime) -> list[DetectedEvent]:
+    """Dated events stay; undated ones only from the last few days' mail, at most a few."""
+    recent = now - timedelta(days=UNCLEAR_MAIL_DAYS)
+    dated = [e for e in events if e.start is not None]
+    unclear = [e for e in events if e.start is None and e.mail_date and e.mail_date >= recent]
+    return dated + unclear[:MAX_UNCLEAR]  # `events` is sorted: newest unclear mail first
+
+
 async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEventsOutput:
     settings = get_settings()
     result, is_demo = await _scan(settings, days=EVENT_SCAN_DAYS)
@@ -140,7 +153,7 @@ async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEv
 
     if args.only_deadlines:
         events = [e for e in events if e.category == "deadline"]
-    events = _sorted(events)
+    events = _keep_recent_unclear(_sorted(events), now)
 
     if is_demo:
         note = NOTE_DEMO

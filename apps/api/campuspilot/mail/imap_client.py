@@ -141,21 +141,16 @@ class ReadOnlyMailbox:
         if typ != "OK":
             raise ConnectorError("unreachable", _SERVER)
 
-    def search_uids(self, since: date, text: str | None = None) -> list[int]:
-        """UIDs (ascending) of mails since a date, optionally filtered by the server on TEXT."""
-        args: list[str | bytes] = []
-        if text:
-            safe = text.replace("\\", " ").replace('"', " ").strip()
-            quoted = f'"{safe}"'
-            if safe.isascii():
-                args = ["SINCE", imap_date(since), "TEXT", quoted]
-            else:
-                # A non-ASCII term needs a declared charset and raw UTF-8 bytes.
-                args = ["CHARSET", "UTF-8", "SINCE", imap_date(since), "TEXT", quoted.encode()]
-        else:
-            args = ["SINCE", imap_date(since)]
+    def search_uids(self, since: date) -> list[int]:
+        """UIDs (ascending) of mails received since a date.
+
+        We never ask the server to search text. Measured on IITB's server (27 Nov 2026):
+        `SEARCH SINCE` over two weeks answers in ~0.1 s, but `SEARCH TEXT` for a word it hasn't
+        searched before took over 20 s (it scans every body), which hit our timeout. Fetching
+        two weeks of headers + text (~170 mails) and filtering here takes well under a second.
+        """
         try:
-            typ, data = self._conn.uid("SEARCH", *args)
+            typ, data = self._conn.uid("SEARCH", "SINCE", imap_date(since))
         except imaplib.IMAP4.error:
             raise SearchRefused from None
         if typ != "OK":
@@ -224,16 +219,7 @@ def _scan(
         box.login(username, password)
         box.select_readonly(settings.imap_folder)
         since = (datetime.now(UTC) - timedelta(days=days)).date()
-        uids: list[int] = []
-        client_filter = False
-        if query:
-            with contextlib.suppress(SearchRefused):
-                uids = box.search_uids(since, query)
-            # Refused, or a phrase that matched nothing (the words may sit apart): filter
-            # client-side over a plain SINCE scan instead.
-            client_filter = not uids
-        if not query or client_filter:
-            uids = box.search_uids(since)
+        uids = box.search_uids(since)  # date only; the query is matched here (see search_uids)
         newest = uids[-settings.mail_max_scan :]
         mails: list[ParsedMail] = []
         for i in range(0, len(newest), FETCH_BATCH):
@@ -247,7 +233,7 @@ def _scan(
                         open_url=link,
                     )
                 )
-        if query and client_filter:
+        if query:
             mails = [m for m in mails if matches_query(m, query)]
         mails.sort(key=lambda m: m.message.date, reverse=True)
         return ScanResult(mails=mails, scanned=len(newest))
