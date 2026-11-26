@@ -1,7 +1,7 @@
 "use client";
 // Polls GET /v1/status every 30 s and works out whether the server is local or hosted.
 // On a hosted server that may be asleep (free tiers sleep when idle) it also runs the "waking" check:
-// /health must answer within 3 s, otherwise we show "Waking the server" and retry with exponential
+// /v1/ping must answer within 3 s, otherwise we show "Waking the server" and retry with exponential
 // backoff for up to about 90 s (docs/CONTRACT.md §10.7).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getStatus, pingHealth } from "@/lib/api";

@@ -23,7 +23,8 @@ Each worker puts shared test helpers in its own `tests/<area>_helpers.py`, not i
 
 | Method & path | Body → response | Notes |
 |---|---|---|
-| `GET /health` | → `{"ok": true}` | Process is up. No dependencies checked. |
+| `GET /health` | → `{"ok": true}` | Process is up. No dependencies checked. Used by Render's health check. |
+| `GET /v1/ping` | → `{"ok": true}` | Same as `/health`, for the web UI's wake check. Browser content blockers block cross-site URLs ending in `/health`. |
 | `GET /v1/status` | → `StatusResponse` | Calls Ollama `/api/tags` + `/api/ps` (3 s timeout) and `moodle.tools.moodle_status()`. |
 | `POST /v1/chat` | `ChatRequest` → `text/event-stream` | §3. |
 | `POST /v1/knowledge/search` | `KnowledgeSearchRequest` → `SearchCampusDocsOutput` | Raw retrieval, for debugging. |
@@ -287,5 +288,5 @@ Downloads follow redirects only to `github.com`, `api.github.com`, `objects.gith
 
 `NEXT_PUBLIC_API_URL` (falls back to `NEXT_PUBLIC_API_BASE`, then `http://127.0.0.1:8000`).
 The UI learns local vs hosted from `/v1/status.deploy_mode`; one build serves both.
-Client-only state `SERVER_WAKING`: `/health` not answering within 3 s → banner "Waking the server,
+Client-only state `SERVER_WAKING`: `/v1/ping` not answering within 3 s → banner "Waking the server,
 up to about a minute…" and retry with exponential backoff for up to about 90 s.

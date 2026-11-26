@@ -7,6 +7,7 @@ Base URL: `<RENDER_URL>` for the hosted pilot, `http://127.0.0.1:8000` locally. 
 | Method | Path | Auth headers | Rate limited | Notes |
 |---|---|---|---|---|
 | GET | `/health` | none | no | `{"ok": true}` |
+| GET | `/v1/ping` | none | no | `{"ok": true}`. Same as `/health`; the web UI uses it because browser content blockers block URLs ending in `/health`. |
 | GET | `/v1/status` | none | no | Mode, index, providers. No key data. |
 | GET | `/v1/sources` | none | no | The source registry with index status. |
 | POST | `/v1/knowledge/search` | none | yes | Search the index. No model involved. |

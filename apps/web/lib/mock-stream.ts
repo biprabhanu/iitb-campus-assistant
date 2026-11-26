@@ -322,7 +322,7 @@ let mockMoodle: MoodleTokenResponse["mode"] = "none";
 
 let coldStart = 0;
 
-/** GET /health in mock mode. With ?mockCold the "server" stays asleep (about a minute, or forever for =fail). */
+/** GET /v1/ping in mock mode. With ?mockCold the "server" stays asleep (about a minute, or forever for =fail). */
 export async function mockPing(signal?: AbortSignal): Promise<boolean> {
   const cold = mockCold();
   if (!cold) return true;

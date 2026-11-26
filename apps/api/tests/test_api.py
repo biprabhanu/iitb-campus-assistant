@@ -37,6 +37,7 @@ def make_client(monkeypatch, **env: str) -> TestClient:
 def test_health(monkeypatch) -> None:
     client = make_client(monkeypatch)
     assert client.get("/health").json() == {"ok": True}
+    assert client.get("/v1/ping").json() == {"ok": True}
 
 
 def test_mock_chat_streams_sse_in_order(monkeypatch) -> None:

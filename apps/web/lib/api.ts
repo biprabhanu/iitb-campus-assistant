@@ -4,7 +4,10 @@ import { authHeaders, type LlmCreds, type MoodleCreds } from "./credentials";
 import { mockCheckLlm, mockCheckMoodle, mockDeleteMoodle, mockPing, mockSendMoodle, mockStatus } from "./mock-stream";
 import type { LLMCheckResponse, MoodleTokenRequest, MoodleTokenResponse, StatusResponse } from "./types";
 
-/** Does GET /health answer within `timeoutMs`? Never throws. */
+/**
+ * Does the server answer GET /v1/ping within `timeoutMs`? Never throws.
+ * Not /health: browser ad and tracker blockers block cross-site URLs ending in /health.
+ */
 export async function pingHealth(timeoutMs: number, signal?: AbortSignal): Promise<boolean> {
   if (MOCK) return mockPing(signal);
   const ctl = new AbortController();
@@ -12,7 +15,7 @@ export async function pingHealth(timeoutMs: number, signal?: AbortSignal): Promi
   const onAbort = () => ctl.abort();
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
-    const res = await fetch(`${API_BASE}/health`, { signal: ctl.signal, cache: "no-store" });
+    const res = await fetch(`${API_BASE}/v1/ping`, { signal: ctl.signal, cache: "no-store" });
     return res.ok;
   } catch {
     return false;

@@ -62,6 +62,15 @@ async def health() -> dict[str, bool]:
     return {"ok": True}
 
 
+# Same answer as /health, for the web UI's "is the server awake?" check. Browser ad and tracker
+# blockers (uBlock lists, Brave, Safari content blockers) block cross-site requests to URLs ending
+# in /health, which left the hosted UI stuck on "Waking the server". Render's own health check
+# is server-to-server and keeps using /health.
+@router.get("/v1/ping")
+async def ping() -> dict[str, bool]:
+    return {"ok": True}
+
+
 async def _model_status(settings: Any) -> tuple[bool, bool, str, str]:
     """(online, loaded, model name, mode) - never raises."""
     if settings.campuspilot_mock_llm:
