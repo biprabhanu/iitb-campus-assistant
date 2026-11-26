@@ -187,7 +187,8 @@ export interface ChatMessage {
   status?: MessageStatus;
   steps?: ToolEvent[];
   sources?: SourceItem[];
-  cards?: Card[]; // v2 connector cards (Webmail / ASC)
+  cards?: Card[]; // v2 connector cards (Webmail / ASC); kept in memory only, never saved to localStorage
+  cardsOmitted?: boolean; // the cards were dropped when the chat was saved (after a reload)
   done?: DoneEvent;
   error?: ErrorEvent;
   feedback?: "up" | "down";

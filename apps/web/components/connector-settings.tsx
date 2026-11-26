@@ -81,6 +81,7 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
   const [announce, setAnnounce] = useState(""); // read out by screen readers (visually hidden)
   const [confirming, setConfirming] = useState(false);
   const [otpCancelled, setOtpCancelled] = useState(false);
+  const [formOpen, setFormOpen] = useState(false); // the username / password form stays folded until "Connect" is pressed
   const [google, setGoogle] = useState<{ url: string; blocked: boolean } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeading = useRef(false);
@@ -99,8 +100,11 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
   const state = status.state;
   const showOtp = state === "needs_otp" && !!status.challenge_id && !otpCancelled;
   const isGoogle = name === "gcal";
+  const isWebmail = name === "webmail";
+  const canLogin = !isGoogle && !showOtp && (state === "not_connected" || state === "error" || state === "needs_otp");
 
   function done(next: ConnectorStatus, text: string) {
+    setFormOpen(false);
     onChange(next);
     setAnnounce(text);
     focusHeading.current = true;
@@ -188,6 +192,25 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
     setGoogle(null);
   }
 
+  // Disconnect asks first. The confirmation takes the full row; Cancel gets focus (the safe choice).
+  const disconnectUi = confirming ? (
+    <div className="flex w-full flex-wrap items-center gap-2 rounded-lg bg-muted px-3 py-2">
+      <span className="min-w-0 flex-1 basis-48 text-sm">
+        Disconnect {meta.title}? {isGoogle ? "Access is revoked at Google." : "Your saved login is deleted from the Keychain."}
+      </span>
+      <Button variant="danger" size="sm" onClick={disconnect} disabled={busy !== null}>
+        {busy === "disconnect" && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Yes, disconnect
+      </Button>
+      <Button variant="ghost" size="sm" autoFocus disabled={busy !== null} onClick={() => setConfirming(false)}>
+        Cancel
+      </Button>
+    </div>
+  ) : (
+    <Button variant="danger" size="sm" onClick={() => setConfirming(true)} aria-label={`Disconnect ${meta.title}`}>
+      Disconnect
+    </Button>
+  );
+
   const pill = PILL[state];
   const tone = TONE[pill.tone];
   const googleUrl = safeHttpUrl(google?.url);
@@ -221,11 +244,15 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
         </p>
       )}
 
+      {/* Connected: who it is, and Disconnect on the same line (it wraps under on a phone). */}
       {state === "connected" && (
-        <p className="mt-3 text-sm">
-          Connected{status.account ? <> as <strong className="break-all font-semibold">{status.account}</strong></> : null}
-          {status.demo ? <span className="text-muted-foreground"> (sample data)</span> : null}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="min-w-0 text-sm">
+            Connected{status.account ? <> as <strong className="break-all font-semibold">{status.account}</strong></> : null}
+            {status.demo ? <span className="text-muted-foreground"> (sample data)</span> : null}
+          </p>
+          {disconnectUi}
+        </div>
       )}
 
       {state === "error" && status.message && (
@@ -234,11 +261,20 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
         </p>
       )}
 
-      {/* Webmail / ASC: username and password. The password field is masked and never autofilled. */}
-      {!isGoogle && !showOtp && (state === "not_connected" || state === "error" || state === "needs_otp") && (
-        <form onSubmit={login} className="mt-3 space-y-3" aria-label={`Connect ${meta.title}`}>
+      {/* Webmail / ASC: a Connect button first; the form opens in place so the dialog stays short. */}
+      {canLogin && !formOpen && (
+        <div className="mt-3">
+          <Button variant="primary" onClick={() => setFormOpen(true)} aria-label={`${state === "error" ? "Reconnect" : "Connect"} ${meta.title}`}>
+            {state === "error" ? "Reconnect" : "Connect"}
+          </Button>
+        </div>
+      )}
+
+      {/* The form. The password field is masked and never autofilled. */}
+      {canLogin && formOpen && (
+        <form onSubmit={login} className="mt-3 space-y-3" aria-label={`${meta.title} login`}>
           <div>
-            <label htmlFor={`${name}-user`} className="mb-1.5 block text-sm font-medium">IITB LDAP username</label>
+            <label htmlFor={`${name}-user`} className="mb-1.5 block text-sm font-medium">{isWebmail ? "LDAP ID" : "IITB LDAP username"}</label>
             <input
               id={`${name}-user`}
               type="text"
@@ -246,16 +282,47 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
+              autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              placeholder={isWebmail ? "your LDAP id, e.g. 24b0000" : undefined}
               className={INPUT}
             />
           </div>
-          <SecretInput id={`${name}-password`} label="LDAP password" noun="password" value={password} onChange={setPassword} />
-          <Button type="submit" variant="primary" disabled={!username.trim() || !password || busy !== null}>
-            {busy === "login" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {busy === "login" ? "Checking…" : state === "error" ? "Reconnect" : "Connect"}
-          </Button>
+          {isWebmail ? (
+            <div>
+              {/* IITB mail does not accept the LDAP password: it needs an SSO access token for Emails.
+                  (The API field is still called `password`; only the wording differs.) */}
+              <SecretInput id="webmail-password" label="SSO access token (Emails)" noun="token" value={password} onChange={setPassword} describedBy="webmail-token-help" />
+              <p id="webmail-token-help" className="mt-1.5 text-xs text-muted-foreground">
+                Create one at{" "}
+                <a href="https://sso.iitb.ac.in" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 font-medium text-accent-text underline-offset-4 hover:underline">
+                  sso.iitb.ac.in <ExternalLink className="h-3 w-3" aria-hidden />
+                </a>{" "}
+                → Manage account → Access tokens → Emails. It&apos;s not your LDAP password.
+              </p>
+            </div>
+          ) : (
+            <SecretInput id={`${name}-password`} label="IITB LDAP password" noun="password" value={password} onChange={setPassword} />
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" variant="primary" disabled={!username.trim() || !password || busy !== null}>
+              {busy === "login" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+              {busy === "login" ? "Checking…" : "Connect"}
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={busy !== null}
+              onClick={() => {
+                setFormOpen(false);
+                setUsername("");
+                setPassword("");
+                setError(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
           <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
             <span>Sent once to your local CampusPilot server and stored in your Mac&apos;s Keychain. Never sent anywhere else.</span>
@@ -328,25 +395,8 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
         </p>
       )}
 
-      {(state === "connected" || (state === "error" && !isGoogle)) && (
-        <div className="mt-3">
-          {confirming ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm">Disconnect {meta.title}? {isGoogle ? "Access is revoked at Google." : "Your saved login is deleted from the Keychain."}</span>
-              <Button variant="danger" size="sm" onClick={disconnect} disabled={busy !== null}>
-                {busy === "disconnect" && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />} Yes, disconnect
-              </Button>
-              <Button variant="ghost" size="sm" autoFocus disabled={busy !== null} onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </div>
-          ) : (
-            <Button variant="danger" size="sm" onClick={() => setConfirming(true)} aria-label={`Disconnect ${meta.title}`}>
-              Disconnect
-            </Button>
-          )}
-        </div>
-      )}
+      {/* A saved login that no longer works can still be removed. */}
+      {state === "error" && !isGoogle && <div className="mt-3">{disconnectUi}</div>}
     </li>
   );
 }

@@ -4,6 +4,7 @@
 // card wears a source label. Grades are hidden until the student asks to see them.
 import { useEffect, useId, useRef, useState } from "react";
 import {
+  Award,
   CalendarCheck,
   CalendarClock,
   CalendarPlus,
@@ -11,6 +12,7 @@ import {
   Eye,
   EyeOff,
   FlaskConical,
+  GraduationCap,
   Info,
   Loader2,
   Mail,
@@ -416,7 +418,9 @@ function Grades({ cards }: { cards: AscGradeCard[] }) {
   return (
     <section aria-label="Grades" className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className={cn(HEADING, "mb-0")}>Grades</h3>
+        <h3 className={cn(HEADING, "mb-0")}>
+          <Award className="h-3.5 w-3.5" aria-hidden /> Grades
+        </h3>
         <Button size="sm" variant="outline" aria-controls={listId} onClick={() => setShown((s) => !s)}>
           {shown ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
           {shown ? "Hide grades" : "Show grades"}
@@ -429,7 +433,7 @@ function Grades({ cards }: { cards: AscGradeCard[] }) {
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <CourseChip code={c.grade.course_code} />
                 {c.grade.semester && <span className="text-xs text-muted-foreground">{c.grade.semester}</span>}
-                <SourceLabel label={c.source_label} className="ml-auto sm:ml-0" />
+                <SourceLabel label={c.source_label} className="ml-auto" />
               </div>
               <p className="mt-1.5 text-[15px] font-medium leading-snug">{c.grade.course_title || c.grade.course_code}</p>
               {c.grade.credits != null && <p className="mt-0.5 text-xs text-muted-foreground">{c.grade.credits} {c.grade.credits === 1 ? "credit" : "credits"}</p>}
@@ -492,7 +496,9 @@ export function PersonalCards({ cards }: { cards: Card[] }) {
       {slots.length > 0 && <Timetable cards={slots} />}
       {courses.length > 0 && (
         <section aria-label="Registered courses">
-          <h3 className={HEADING}>Courses</h3>
+          <h3 className={HEADING}>
+            <GraduationCap className="h-3.5 w-3.5" aria-hidden /> Courses
+          </h3>
           <ul className="grid gap-2 sm:grid-cols-2">
             {courses.map((c) => (
               <CourseRow key={c.id} card={c} />

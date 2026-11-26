@@ -172,6 +172,23 @@ test("grades stay hidden until Show grades is pressed, and can be hidden again",
   await expect(grades.getByTestId("grade-value")).toHaveCount(0);
 });
 
+test("grades and mail cards are never written to localStorage; after a reload the chat says so", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "What are my grades?");
+  await expect(page.getByTestId("grade-card")).toHaveCount(3, { timeout: 15_000 });
+  await page.getByRole("button", { name: "Show grades" }).click();
+  await page.waitForTimeout(700); // the chat is saved shortly after each change
+  const saved = await page.evaluate(() => localStorage.getItem("campuspilot.conversations.v1") ?? "");
+  expect(saved).toContain("I found grades for 3 courses"); // the answer text is saved as before
+  expect(saved).not.toContain("Optimization"); // ... but no card content
+  expect(saved).not.toContain('"grade":"AA"');
+
+  await page.reload();
+  await page.getByRole("button", { name: /What are my grades/ }).first().click();
+  await expect(page.getByRole("article")).toContainText("aren't kept in this browser");
+  await expect(page.getByTestId("grade-card")).toHaveCount(0);
+});
+
 test("What's due: Moodle deadlines and mail deadline cards, each with its own source label", async ({ page }) => {
   await page.goto("/?mockConnectors=connected");
   await ask(page, "What's due this week?");
@@ -209,21 +226,35 @@ test("Settings lists the three connectors with their status", async ({ page }) =
   for (const title of ["IITB Webmail", "ASC", "Google Calendar"]) await expect(dialog.getByRole("heading", { name: title })).toBeVisible();
   await expect(dialog.getByTestId("connector-webmail")).toContainText("Not connected");
   await expect(dialog.getByText("campus network or the IITB VPN")).toBeVisible();
-  await expect(dialog.getByText("stored in your Mac's Keychain", { exact: false }).first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Connect IITB Webmail" }).click();
+  await expect(dialog.getByText("stored in your Mac's Keychain", { exact: false })).toBeVisible();
+  await expect(dialog.getByText("Never sent anywhere else", { exact: false })).toBeVisible();
+  // Webmail needs an SSO access token, not the LDAP password, and says where to make one.
+  await expect(dialog.getByLabel("LDAP ID")).toHaveAttribute("placeholder", /24b0000/);
+  const help = dialog.getByRole("link", { name: /sso\.iitb\.ac\.in/ });
+  await expect(help).toHaveAttribute("href", "https://sso.iitb.ac.in");
+  await expect(help).toHaveAttribute("target", "_blank");
+  await expect(help).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(dialog.getByText("It's not your LDAP password", { exact: false })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click(); // folds the form again
+  await expect(dialog.getByLabel("LDAP ID")).toHaveCount(0);
 });
 
 test("connect IITB Webmail, then disconnect with a confirmation", async ({ page }) => {
   await page.goto("/");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-webmail");
-  const password = card.getByLabel("LDAP password");
-  await card.getByLabel("IITB LDAP username").fill("demo.student");
+  await expect(card.getByLabel("SSO access token (Emails)")).toHaveCount(0); // the form is folded until Connect is pressed
+  await card.getByRole("button", { name: "Connect IITB Webmail" }).click();
+  const password = card.getByLabel("SSO access token (Emails)");
+  await expect(card.getByLabel("LDAP ID")).toBeFocused(); // the form opens with focus on the first field
+  await card.getByLabel("LDAP ID").fill("demo.student");
   await password.fill("fake-password-1");
   await expect(password).toHaveAttribute("type", "password"); // masked
   await card.getByRole("button", { name: "Connect", exact: true }).click();
 
   await expect(card).toContainText("Connected as demo.student");
-  await expect(card.getByLabel("LDAP password")).toHaveCount(0); // the form is gone, so is the password
+  await expect(card.getByLabel("SSO access token (Emails)")).toHaveCount(0); // the form is gone, so is the password
   // Focus moved to the card title, not lost.
   await expect(card.getByRole("heading", { name: "IITB Webmail" })).toBeFocused();
 
@@ -240,17 +271,19 @@ test("a wrong password shows a friendly error and the form stays", async ({ page
   await page.goto("/");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-webmail");
-  await card.getByLabel("IITB LDAP username").fill("demo.student");
-  await card.getByLabel("LDAP password").fill("bad-password");
+  await card.getByRole("button", { name: "Connect IITB Webmail" }).click();
+  await card.getByLabel("LDAP ID").fill("demo.student");
+  await card.getByLabel("SSO access token (Emails)").fill("bad-password");
   await card.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(card.getByRole("alert")).toContainText("not accepted");
-  await expect(card.getByLabel("LDAP password")).toHaveValue(""); // cleared as soon as it was sent
+  await expect(card.getByLabel("SSO access token (Emails)")).toHaveValue(""); // cleared as soon as it was sent
 });
 
 test("ASC asks for a one-time code, rejects a wrong one, and connects with the right one", async ({ page }) => {
   await page.goto("/");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-asc");
+  await card.getByRole("button", { name: "Connect ASC" }).click();
   await card.getByLabel("IITB LDAP username").fill("demo.student");
   await card.getByLabel("LDAP password").fill("fake-password-2");
   await card.getByRole("button", { name: "Connect", exact: true }).click();
@@ -318,8 +351,9 @@ test("login and disconnect requests carry the confirm header and nothing is kept
   await page.goto("/?mockNet=1");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-webmail");
-  await card.getByLabel("IITB LDAP username").fill("demo.student");
-  await card.getByLabel("LDAP password").fill("fake-password-3");
+  await card.getByRole("button", { name: "Connect IITB Webmail" }).click();
+  await card.getByLabel("LDAP ID").fill("demo.student");
+  await card.getByLabel("SSO access token (Emails)").fill("fake-password-3");
   await card.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(card).toContainText("Connected as demo.student");
   await card.getByRole("button", { name: "Disconnect IITB Webmail" }).click();

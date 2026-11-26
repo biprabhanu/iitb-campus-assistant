@@ -103,6 +103,11 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
         </div>
         {moodleFirst && <DeadlineCards items={deadlines} hideSummary />}
         <PersonalCards cards={cards} />
+        {cards.length === 0 && message.cardsOmitted && (
+          <p className="text-xs italic text-muted-foreground">
+            The cards from your mail or ASC aren&apos;t kept in this browser. Ask again to see them.
+          </p>
+        )}
 
         {message.status === "stopped" && <p className="text-xs italic text-muted-foreground">Stopped.</p>}
 

@@ -57,7 +57,9 @@ export async function mockGetConnectors(): Promise<ApiResult<ConnectorsResponse>
 export async function mockLogin(name: "webmail" | "asc", req: ConnectorLoginRequest): Promise<ApiResult<ConnectorStatus>> {
   await sleep(600);
   if (current()[name].state === "disabled") return fail("NOT_AVAILABLE", `Turn this on with ${FLAGS[name]}=true in .env.`, 404);
-  if (/bad/i.test(req.password)) return fail("AUTH_FAILED", "That username or password was not accepted. Check it and try again.");
+  if (/bad/i.test(req.password)) {
+    return fail("AUTH_FAILED", name === "webmail" ? "That LDAP ID or SSO access token was not accepted. Check the token (not your LDAP password) and try again." : "That username or password was not accepted. Check it and try again.");
+  }
   if (name === "asc") {
     return { ok: true, data: set(name, { name, enabled: true, state: "needs_otp", account: req.username, challenge_id: "mock-challenge", message: "Enter the one-time code ASC just sent you." }) };
   }
