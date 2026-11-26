@@ -99,6 +99,13 @@ make mock-dev
 
 Then open http://127.0.0.1:3000.
 
+This works on a fresh clone, with no tunnel and nothing ingested:
+
+- If `data/campuspilot.db` is missing, `make mock-dev` first builds a small demo index from the synthetic pages in `data/fixtures/docs/` (`scripts/build_demo_index.py`). Those cards say **"Demo fixture, not official"**, and the sample text is not real IITB information. An existing index is never touched.
+- Official office and portal links come straight from `data/sources/registry.csv`, so they work even with an empty database.
+- "Where can I find the academic calendar?" then gives a cited answer whose card links to the official calendar page.
+- To switch to the real pages, run `make ingest` (needs internet). It removes the demo sources first. To rebuild the demo index, delete `data/campuspilot.db` and run `make mock-dev` again.
+
 ## Connecting Moodle (optional, read-only)
 
 You can connect Moodle in the app under **Settings**. The app never asks for your Moodle password.

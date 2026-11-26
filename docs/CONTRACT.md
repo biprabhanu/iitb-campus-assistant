@@ -91,7 +91,7 @@ Exact function signatures the backend registry calls:
 ```python
 # campuspilot/retrieval/tools.py  (sync; registry runs them in a thread)
 def search_campus_docs(args: SearchCampusDocsInput, db_path: Path | None = None) -> SearchCampusDocsOutput
-def get_official_link(args: GetOfficialLinkInput, db_path: Path | None = None) -> GetOfficialLinkOutput
+def get_official_link(args: GetOfficialLinkInput, registry_path: Path | None = None) -> GetOfficialLinkOutput
 def list_sources(db_path: Path | None = None) -> list[SourcePublic]          # for GET /v1/sources
 def count_indexed_sources(db_path: Path | None = None) -> int                # for /v1/status
 
@@ -113,7 +113,8 @@ Behaviour notes:
 - `search_campus_docs`: only sources with `handling='ingest'` and documents with `status='indexed'`.
   Score = −bm25 (bm25 weights: text 1.0, heading_path 0.5, title 0.5), ×1.25 for tier 1. Audience
   filter keeps chunks whose audience is NULL/"all" or matches. Max 2 chunks per document in the top-k.
-- `get_official_link`: keyword match over registry rows (title, category, notes, issuer), any handling
+- `get_official_link`: keyword match over the rows of `data/sources/registry.csv`, read directly (no DB
+  needed, so links work on a fresh clone), over title, category, notes and issuer, any handling
   except `blocked`. Always returns the URL from the registry, never one built from the topic.
 - Moodle: resolution order Keychain token → `MOODLE_TOKEN` → Keychain iCal → `MOODLE_ICAL_URL` →
   demo fixtures (if `MOODLE_DEMO_WHEN_UNCONFIGURED`) → `MoodleError("not_configured")`.

@@ -31,6 +31,7 @@ web: ## Start only the web UI on 127.0.0.1:3000
 	cd $(WEB_DIR) && npm run dev -- --hostname 127.0.0.1 --port $(WEB_PORT)
 
 mock-dev: ## Like `dev`, but with the scripted fake model (no tunnel needed)
+	$(PY) scripts/build_demo_index.py --if-missing
 	CAMPUSPILOT_MOCK_LLM=true $(MAKE) -j2 api web
 
 test: test-api test-web ## Run every offline test and linter

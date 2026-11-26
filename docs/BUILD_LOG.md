@@ -26,3 +26,4 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 
 - 5 live acceptance runs (25 questions). From 88% behaviour / 44% source-cited to 96% / 75%, 0 errors. Decisions: auto official-link lookup after a document search; the pre-check owns clarification (cohort-named questions skip it; the routing call no longer sees `ask_clarification`); unoffered tool calls are ignored so the search guard still runs. The overfitting caveat is in `docs/EVAL.md`.
 - Security review: the per-request log line was silent (no logging configured), so the `campuspilot` logger now prints at INFO. Verified live: no message text, roll number or token in the logs; /v1/moodle/token doesn't echo.
+- 26 Nov: fresh-clone demo. get_official_link reads registry.csv directly (no DB needed); make mock-dev builds a demo index from data/fixtures/docs/ (SRC-DEMO-*, labelled not official) only when data/campuspilot.db is missing, and make ingest removes demo sources first.

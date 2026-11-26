@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import csv
 import re
 import sqlite3
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlparse
 
 from campuspilot.ingestion.db import connect, resolve_db_path
+from campuspilot.ingestion.registry import SourceRow, load_registry
 from campuspilot.schemas.chat import SourcePublic
 from campuspilot.schemas.tools import (
     DocChunkHit,
@@ -156,12 +158,12 @@ def _stems(text: str) -> set[str]:
     return {_stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())}
 
 
-def _link_score(topic_tokens: list[str], row: sqlite3.Row) -> int:
+def _link_score(topic_tokens: list[str], row: SourceRow) -> int:
     fields = [  # (text, weight)
-        (row["title"] or "", 3),
-        (row["category"] or "", 3),
-        (row["notes"] or "", 2),
-        (row["issuer"] or "", 1),
+        (row.title, 3),
+        (row.category, 3),
+        (row.notes, 2),
+        (row.issuer, 1),
     ]
     stems = [_stem(t) for t in topic_tokens]
     score = 0
@@ -169,7 +171,7 @@ def _link_score(topic_tokens: list[str], row: sqlite3.Row) -> int:
         field_stems = _stems(text)
         score += weight * sum(1 for s in stems if s in field_stems)
     # Bonus when two neighbouring topic words appear next to each other in the title or notes.
-    words = re.findall(r"[a-z0-9]+", f"{row['title']} {row['notes']}".lower())
+    words = re.findall(r"[a-z0-9]+", f"{row.title} {row.notes}".lower())
     haystack = " ".join(_stem(w) for w in words)
     for a, b in zip(stems, stems[1:], strict=False):
         if f"{a} {b}" in haystack:
@@ -178,29 +180,31 @@ def _link_score(topic_tokens: list[str], row: sqlite3.Row) -> int:
 
 
 def get_official_link(
-    args: GetOfficialLinkInput, db_path: Path | None = None
+    args: GetOfficialLinkInput, registry_path: Path | None = None
 ) -> GetOfficialLinkOutput:
-    conn = _open_existing(db_path)
+    """Look up portal/office links in data/sources/registry.csv.
+
+    Reads the CSV directly (not the database), so links work on a fresh clone before
+    anything has been ingested.
+    """
     tokens = tokenize(args.topic)
-    if conn is None or not tokens:
+    if not tokens:
         return GetOfficialLinkOutput()
     try:
-        rows = conn.execute("SELECT * FROM sources WHERE handling != 'blocked'").fetchall()
-    except sqlite3.Error:
+        rows = [r for r in load_registry(registry_path) if r.handling != "blocked"]
+    except (OSError, ValueError, csv.Error):  # missing or malformed registry: no links
         return GetOfficialLinkOutput()
-    finally:
-        conn.close()
     scored = [(_link_score(tokens, r), r) for r in rows]
     # Best score first; tier 1 before tier 2 on ties.
-    scored = sorted((x for x in scored if x[0] > 0), key=lambda x: (-x[0], x[1]["authority_tier"]))
+    scored = sorted((x for x in scored if x[0] > 0), key=lambda x: (-x[0], x[1].authority_tier))
     links = [
         OfficialLink(
-            source_id=r["id"],
-            title=r["title"],
-            issuer=r["issuer"],
-            url=r["url"],
-            category=r["category"],
-            notes=r["notes"] or "",
+            source_id=r.id,
+            title=r.title,
+            issuer=r.issuer,
+            url=r.url,
+            category=r.category,
+            notes=r.notes or "",
         )
         for _, r in scored[:3]
     ]

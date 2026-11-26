@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps" / "api"))
 
 from campuspilot.ingestion import db  # noqa: E402
+from campuspilot.ingestion.demo import remove_demo_sources  # noqa: E402
 from campuspilot.ingestion.fetcher import Fetcher  # noqa: E402
 from campuspilot.ingestion.pipeline import ingest_source  # noqa: E402
 from campuspilot.ingestion.registry import load_registry  # noqa: E402
@@ -38,6 +39,8 @@ def main() -> int:
         return 0
 
     conn = db.connect(create=True)
+    if removed := remove_demo_sources(conn):  # left over from `make mock-dev`
+        print(f"Removed {removed} demo source(s) built by mock-dev.")
     for r in load_registry():  # the whole registry is always loaded into `sources`
         db.upsert_source(conn, r.model_dump())
     conn.commit()

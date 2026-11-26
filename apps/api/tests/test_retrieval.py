@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pytest
@@ -32,7 +33,6 @@ def conn(tmp_path):
 def test_empty_when_db_missing() -> None:
     assert not Path(db.resolve_db_path()).exists()
     assert search("academic calendar") == []
-    assert get_official_link(GetOfficialLinkInput(topic="hostel")).links == []
     assert list_sources() == []
     assert count_indexed_sources() == 0
 
@@ -123,7 +123,16 @@ def test_prompt_injection_text_is_stored_as_plain_data(conn, tmp_path) -> None:
     assert hits and "Ignore previous instructions" in hits[0].text  # returned as plain text
 
 
-def test_official_link_hostel_maintenance(conn) -> None:
+def write_registry(path: Path, rows) -> Path:
+    fields = list(rows[0].model_dump())
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(r.model_dump() for r in rows)
+    return path
+
+
+def test_official_link_hostel_maintenance(tmp_path) -> None:
     rows = [
         make_source(
             "SRC-HOSTEL-RULES", category="hostel", title="Hostel Rules", notes="hostel rules"
@@ -137,13 +146,25 @@ def test_official_link_hostel_maintenance(conn) -> None:
         ),
         make_source("SRC-BLOCKED", category="maintenance", handling="blocked", notes="maintenance"),
     ]
-    for r in rows:
-        add_source(conn, r)
-    links = get_official_link(GetOfficialLinkInput(topic="hostel maintenance")).links
+    registry = write_registry(tmp_path / "registry.csv", rows)
+    links = get_official_link(GetOfficialLinkInput(topic="hostel maintenance"), registry).links
     assert links[0].source_id == "SRC-SUPPORT"
     assert links[0].url == "https://example.test/SRC-SUPPORT"  # URL from the registry
     assert "SRC-BLOCKED" not in {link.source_id for link in links}
-    assert get_official_link(GetOfficialLinkInput(topic="zzzz")).links == []
+    assert get_official_link(GetOfficialLinkInput(topic="zzzz"), registry).links == []
+
+
+def test_official_link_works_without_a_database() -> None:
+    """Fresh clone: nothing ingested yet, but the real registry still gives portal links."""
+    assert not Path(db.resolve_db_path()).exists()
+    links = get_official_link(GetOfficialLinkInput(topic="academic calendar")).links
+    assert links and links[0].source_id == "SRC-ACAD-CAL"
+    assert not Path(db.resolve_db_path()).exists()  # the lookup never creates a DB
+
+
+def test_official_link_missing_registry_is_empty(tmp_path) -> None:
+    missing = tmp_path / "nope.csv"
+    assert get_official_link(GetOfficialLinkInput(topic="hostel"), missing).links == []
 
 
 def test_list_sources_and_count(conn, tmp_path) -> None:
