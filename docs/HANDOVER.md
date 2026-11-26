@@ -1,6 +1,6 @@
 # Handover: current state
 
-Last updated: 2026-11-27. Update this file at the end of every session (see `CLAUDE.md`).
+Last updated: 2026-11-27 (v2 Phase 1 in progress). Update this file at the end of every session (see `CLAUDE.md`).
 
 ## Where the project is
 
@@ -13,7 +13,7 @@ Last updated: 2026-11-27. Update this file at the end of every session (see `CLA
 | v1.1 Phase 2: integration on a local Docker container | Done. |
 | v1.1 Phase 3: deploy to Render and Vercel | **Live, and the smoke test passes.** Two fixes came out of the live deploy (see below). A browser check of the Vercel UI is still to do. |
 | v1.1 Phase 4: hosted acceptance, docs, final sweep, report | **Next.** Not started. |
-| Integrations build (`INTEGRATIONS_BUILD_PROMPT.md`) | Not started. The owner mentioned this file on 2026-11-27, but it is not in the repo yet. Ask for it. Also ask whether it comes before or after finishing the deploy. |
+| v2 integrations (`INTEGRATIONS_BUILD_PROMPT.md`): Webmail, ASC, Google Calendar, local only | **Phase 0 done** (contract commit `947aa14`, `docs/CONTRACT.md` §11). **Phase 1 running:** 4 workers in git worktrees on branches `v2/webmail`, `v2/asc`, `v2/gcal`, `v2/web` (not pushed). Next: Phase 2 merges contract → A → B → C → D and runs the live test with the owner. Pushing to `main` needs the owner's OK (it redeploys Render and Vercel). |
 
 Git: CI (api, web, docker) is green. The only untracked item is `.vscode/`; leave it alone. More
 than one Claude session pushes to `main`, so `git fetch` before you assume your copy is current.
@@ -106,6 +106,16 @@ The owner does every dashboard action. Give one step at a time and wait.
   - The owner once pasted the key into `.env.example`. It was moved before any commit, and the key
     is in no commit.
   - Stale `make`-spawned dev servers once kept ports 3000 and 8000 busy.
+
+## v2 integrations: owner answers and what's still needed
+
+- ASC: the internal portal (campus or VPN), login through IITB SSO with LDAP. The login URL is not confirmed yet.
+- Webmail: IMAP over SSL. Host and port are not confirmed yet (placeholder `imap.iitb.ac.in:993`).
+- Mail is read only by the local Gemma. ASC data and grades go to no model.
+- Google Calendar: before Phase 2 the owner creates a "Desktop app" OAuth client in their own Google account, saves it at
+  `~/.campuspilot/google_client.json` (never in the repo, never pasted in chat), and creates a separate "CampusPilot test"
+  calendar for live tests.
+- In Phase 2 the owner logs in to webmail, ASC and Google through the app UI. Claude never sees their passwords or OTPs.
 
 ## Owner's side tasks (not code)
 
