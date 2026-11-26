@@ -1,0 +1,8 @@
+<!doctype html><html><head><title>Verification</title></head><body>
+<h1>Two-factor verification (synthetic test page)</h1>
+<p>Enter the one-time code sent to your registered device.</p>
+<form action="/login/otp" method="post">
+  <input type="hidden" name="execution" value="e1s2">
+  <input type="text" name="otp_code" inputmode="numeric">
+  <input type="submit" value="Verify">
+</form></body></html>
