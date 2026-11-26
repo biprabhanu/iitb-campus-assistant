@@ -6,6 +6,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { CopyButton } from "@/components/copy-button";
 import { DeadlineCards } from "@/components/deadline-cards";
 import { Markdown } from "@/components/markdown";
+import { PersonalCards } from "@/components/personal-cards";
 import { SourcesRow } from "@/components/sources-row";
 import { StepsTimeline } from "@/components/steps-timeline";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -63,7 +64,10 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
     kind === "abstain" ? [] : citedFirst(sources.filter((s) => !(s.kind === "moodle" && s.due_at)), citations);
   const officeUrls = (done?.office_links ?? []).map((l) => l.url);
   const waitingForText = streaming && !content;
-  const moodleFirst = kind === "moodle" && deadlines.length > 0;
+  const cards = message.cards ?? []; // v2 connector cards (local mode only)
+  // "moodle" and "personal" answers are one template sentence from the server: the text comes first and
+  // the cards it describes follow. No citation chips either way (done.citations is empty).
+  const moodleFirst = (kind === "moodle" || kind === "personal") && deadlines.length > 0;
   const text = <Markdown text={content} citations={citations} sources={sources} extraUrls={officeUrls} />;
 
   let body: React.ReactNode = null;
@@ -98,6 +102,12 @@ function AssistantMessageImpl({ message, streaming, waking, busy, isLast, onQuic
           {body}
         </div>
         {moodleFirst && <DeadlineCards items={deadlines} hideSummary />}
+        <PersonalCards cards={cards} />
+        {cards.length === 0 && message.cardsOmitted && (
+          <p className="text-xs italic text-muted-foreground">
+            The cards from your mail or ASC aren&apos;t kept in this browser. Ask again to see them.
+          </p>
+        )}
 
         {message.status === "stopped" && <p className="text-xs italic text-muted-foreground">Stopped.</p>}
 

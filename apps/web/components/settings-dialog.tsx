@@ -3,11 +3,13 @@ import { useState } from "react";
 import { Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SettingsSection } from "@/components/app-actions";
+import { ConnectorsSection } from "@/components/connector-settings";
 import { HostedSettings } from "@/components/hosted-settings";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { deleteMoodleCredentials, sendMoodleCredentials } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { Credentials } from "@/hooks/use-credentials";
+import type { ConnectorsState } from "@/hooks/use-connectors";
 import type { StatusState } from "@/hooks/use-status";
 import type { ProviderInfo } from "@/lib/types";
 
@@ -32,6 +34,7 @@ export function SettingsDialog({
   creds,
   providers,
   section,
+  connectors,
   onForgetAll,
 }: {
   open: boolean;
@@ -44,6 +47,8 @@ export function SettingsDialog({
   creds: Credentials;
   providers: ProviderInfo[];
   section: SettingsSection;
+  /** Local mode only: the v2 connectors (Webmail, ASC, Google Calendar). */
+  connectors: ConnectorsState;
   onForgetAll: () => void;
 }) {
   const [secret, setSecret] = useState(""); // lives only in this component's memory
@@ -114,8 +119,12 @@ export function SettingsDialog({
       <DialogContent
         title="Settings"
         description={hosted ? "Your AI key and optional Moodle, kept in this browser." : "Connect Moodle, check the model and manage data kept in this browser."}
-        className={hosted ? "max-w-xl" : undefined}
-        initialFocusId={hosted ? (section === "moodle" ? "hs-moodle" : !creds.llm ? "hs-key" : undefined) : undefined}
+        className="max-w-xl"
+        initialFocusId={
+          hosted
+            ? section === "moodle" ? "hs-moodle" : !creds.llm ? "hs-key" : undefined
+            : section === "connectors" ? "connectors-h" : undefined // "Connect Google Calendar" on a card lands here
+        }
       >
         {hosted ? (
           <HostedSettings
@@ -165,6 +174,9 @@ export function SettingsDialog({
               </Button>
             )}
           </section>
+
+          {/* v2: only in local mode (this branch), so the hosted UI never mounts it or asks for connectors. */}
+          <ConnectorsSection connectors={connectors} />
 
           <section aria-labelledby="model-h">
             <h3 id="model-h" className="text-sm font-semibold">Model status</h3>

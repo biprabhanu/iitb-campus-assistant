@@ -1,6 +1,7 @@
 "use client";
 import { CalendarClock, ExternalLink, FlaskConical } from "lucide-react";
 import { useAppActions } from "@/components/app-actions";
+import { SourceLabel } from "@/components/source-label";
 import { Button } from "@/components/ui/button";
 import { cn, courseColorIndex, istDayLabel, istDateTime, relativeDue } from "@/lib/utils";
 import type { SourceItem } from "@/lib/types";
@@ -67,13 +68,16 @@ export function DeadlineCards({ items, hideSummary = false }: { items: SourceIte
                 return (
                   <li key={d.id} className="flex items-center gap-x-4 rounded-xl border bg-card px-3.5 py-3">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      {/* Desktop: course, date, label on one line. Phone: course and label, then the date on its own
+                          line (CSS order), so the date is never cut off. */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         {d.course && (
                           <span className={cn("course-chip rounded-md px-2 py-0.5 text-xs font-semibold", `course-${courseColorIndex(d.course)}`)}>
                             {d.course}
                           </span>
                         )}
-                        <span className="truncate text-xs text-muted-foreground">{istDateTime(d.due_at!)}</span>
+                        <span className="min-w-0 truncate text-xs text-muted-foreground max-sm:order-3 max-sm:basis-full">{istDateTime(d.due_at!)}</span>
+                        <SourceLabel label="Moodle" className="max-sm:order-2" />
                       </div>
                       <p className="mt-1.5 text-[15px] font-medium leading-snug">{d.title}</p>
                     </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText } from "lucide-react";
+import { SourceLabel } from "@/components/source-label";
 import { checkedAgo, cn, domainOf } from "@/lib/utils";
 import type { SourceItem } from "@/lib/types";
 
@@ -16,6 +17,7 @@ function SourceCard({ source, number }: { source: SourceItem; number: number }) 
       rel="noopener noreferrer"
       className="group flex h-full flex-col gap-2 rounded-xl border bg-card p-3 transition-colors duration-150 hover:border-primary/60 hover:bg-muted"
     >
+      <SourceLabel label="Official page" className="self-start" />
       <span className="flex items-start gap-2.5">
         <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-xs font-semibold text-accent-text">
           {source.issuer.trim().charAt(0).toUpperCase() || "?"}

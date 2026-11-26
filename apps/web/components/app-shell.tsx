@@ -10,6 +10,7 @@ import { SettingsDialog } from "@/components/settings-dialog";
 import { Sidebar } from "@/components/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useChat } from "@/hooks/use-chat";
+import { useConnectors } from "@/hooks/use-connectors";
 import { useCredentials } from "@/hooks/use-credentials";
 import { useStatus } from "@/hooks/use-status";
 import { providerList } from "@/lib/providers";
@@ -48,7 +49,9 @@ export function AppShell() {
     setSettingsOpen(true);
   }, []);
 
-  const actions = useMemo(() => ({ openSettings, hosted, providers }), [openSettings, hosted, providers]);
+  // v2 connectors exist only when the server says it is a local one: hosted mode never asks for them.
+  const connectors = useConnectors(status.deployMode === "local");
+  const actions = useMemo(() => ({ openSettings, hosted, providers, connectors }), [openSettings, hosted, providers, connectors]);
 
   // What the empty chat shows: nothing until we know the mode, the key card in hosted mode, else the suggestions.
   let emptyContent: React.ReactNode;
@@ -131,6 +134,7 @@ export function AppShell() {
         creds={creds}
         providers={providers}
         section={settingsSection}
+        connectors={connectors}
         onForgetAll={() => {
           creds.forgetAll();
           chat.clearAll();

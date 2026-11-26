@@ -90,6 +90,9 @@ export function useChat({ hosted, auth }: ChatOptions) {
             case "sources":
               patchMessage(convId, assistantId, (m) => ({ ...m, sources: ev.data }));
               break;
+            case "cards":
+              patchMessage(convId, assistantId, (m) => ({ ...m, cards: ev.data }));
+              break;
             case "token":
               if (!gotToken) {
                 gotToken = true;

@@ -24,9 +24,19 @@ export function loadConversations(): Conversation[] {
   }
 }
 
+/**
+ * Cards from the v2 connectors hold mail snippets and grades. They stay in memory only: they are not
+ * written to localStorage, so nothing from the student's mail or ASC sits in the browser after a
+ * reload. The message remembers that it had cards, and the chat tells the student to ask again.
+ */
+function withoutCards(c: Conversation): Conversation {
+  if (!c.messages.some((m) => m.cards?.length)) return c;
+  return { ...c, messages: c.messages.map((m) => (m.cards?.length ? { ...m, cards: undefined, cardsOmitted: true } : m)) };
+}
+
 export function saveConversations(conversations: Conversation[]): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(conversations));
+    localStorage.setItem(KEY, JSON.stringify(conversations.map(withoutCards)));
   } catch {
     /* storage full or blocked: the app keeps working in memory */
   }

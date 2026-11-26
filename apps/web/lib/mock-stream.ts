@@ -9,15 +9,22 @@
 //   ?mockError=CODE every chat request fails with that code, e.g. PROVIDER_RATE_LIMITED (hosted codes carry a provider)
 //   ?mockCold=1     the server is "asleep" for about a minute (?mockCold=fail: it never wakes)
 //   ?mockHold=tool  freezes on the first step; ?mockHold=text freezes after a few words (screenshots)
+//   ?mockConnectors=none|connected|off|demo   starting state of the v2 connectors (lib/mock-connectors.ts)
+//   ?mockNet=1      status, ping and connector calls use the real fetch, so tests can answer them with page.route
+//
+// v2 journeys (local mode): "Any institute events this week from my mail?", "What's my timetable tomorrow?",
+// "What's due this week?" (Moodle plus mail deadlines), and also "my registered courses", "my grades", "search my mail".
 //
 // The answer text here is sample content only. It never states real policy facts, dates or rules;
 // the source cards use real registry URLs but generic snippets.
-import { mockCold, mockError, mockHold, mockHosted, mockOffline, mockWake } from "./config";
+import { mockCold, mockConnectors, mockError, mockHold, mockHosted, mockOffline, mockWake } from "./config";
 import type { LlmCreds, MoodleCreds } from "./credentials";
 import { httpError } from "./errors";
+import { dueMailCards, PERSONAL_LABELS, personalScript } from "./mock-personal";
 import { FALLBACK_PROVIDERS } from "./providers";
 import { relativeDue } from "./utils";
 import type {
+  Card,
   ChatRequest,
   LLMCheckResponse,
   DoneEvent,
@@ -37,6 +44,7 @@ const LABELS = {
   get_my_deadlines: "Checking your Moodle deadlines",
   ask_clarification: "Asking a clarifying question",
 } as const;
+const ALL_LABELS = { ...LABELS, ...PERSONAL_LABELS } as const;
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -57,8 +65,9 @@ function istEvening(days: number, hour = 23, minute = 59): string {
 }
 
 interface Script {
-  tools: (keyof typeof LABELS)[];
+  tools: (keyof typeof ALL_LABELS)[];
   sources: SourceItem[];
+  cards?: Card[]; // v2 connector cards (local mode only)
   text: string;
   done: Partial<DoneEvent>;
 }
@@ -74,8 +83,14 @@ const doc = (id: string, title: string, issuer: string, url: string, snippet: st
   snippet,
 });
 
-function scriptFor(message: string): Script {
+function scriptFor(message: string, hosted: boolean): Script {
   const m = message.toLowerCase();
+
+  // v2 journeys (mail, ASC): local mode only, and only when the connectors are not switched off.
+  const personal = !hosted && mockConnectors() !== "off" ? personalScript(message) : null;
+  if (personal) {
+    return { tools: personal.tools, sources: [], cards: personal.cards, text: personal.text, done: { citations: [], freshness: "unknown", answer_kind: "personal" } };
+  }
 
   if (/academic calendar|calendar/.test(m)) {
     return {
@@ -113,6 +128,22 @@ function scriptFor(message: string): Script {
     // "Tonight 11:59 PM", or one hour from now if that has already passed.
     const tonight = istEvening(0);
     const first = Date.parse(tonight) > Date.now() + 30 * 60_000 ? tonight : inHours(1);
+    // Local mode with the mail connector on: the same Moodle deadlines plus two deadlines found in mail,
+    // each card labelled with where it came from. Hosted keeps the plain Moodle answer.
+    if (!hosted && mockConnectors() !== "off") {
+      return {
+        tools: ["get_my_deadlines", "get_upcoming_institute_events"],
+        sources: [
+          mk(1, "IE624", "Assignment 3: Prototype report", first),
+          mk(2, "IE611", "Problem Set 4", istEvening(2, 17, 0)),
+          mk(3, "HS101", "Quiz 2 closes", istEvening(3, 11, 59), "quiz"),
+          mk(4, "MA205", "Homework 6", istEvening(4, 23, 59)),
+        ],
+        cards: dueMailCards(),
+        text: `You have 4 deadlines on Moodle in the next 7 days, and 2 more found in your mail. The nearest is IE624 Assignment 3: Prototype report, due ${relativeDue(first).text}.`,
+        done: { citations: [], freshness: "unknown", answer_kind: "personal" },
+      };
+    }
     return {
       tools: ["get_my_deadlines"],
       sources: [
@@ -276,11 +307,11 @@ export async function* mockChatStream(req: ChatRequest, signal: AbortSignal, aut
     return;
   }
 
-  const script = scriptFor(req.message);
+  const script = scriptFor(req.message, hosted);
   const hold = mockHold();
 
   for (const name of script.tools) {
-    const label = LABELS[name];
+    const label = ALL_LABELS[name];
     yield { event: "tool", data: { name, label, state: "start" } };
     if (hold === "tool") await sleep(600_000, signal); // screenshots: stay on this step
     await sleep(650, signal);
@@ -289,6 +320,7 @@ export async function* mockChatStream(req: ChatRequest, signal: AbortSignal, aut
   }
 
   if (script.sources.length > 0) yield { event: "sources", data: script.sources };
+  if (script.cards && script.cards.length > 0) yield { event: "cards", data: script.cards };
 
   if (mockWake()) await sleep(5000, signal);
 
@@ -381,6 +413,7 @@ export async function mockStatus(): Promise<StatusResponse> {
     sources_indexed: 24,
     mode: "mock",
     deploy_mode: "local",
+    connectors: mockConnectors() === "off" ? [] : ["webmail", "asc", "gcal"],
   };
 }
 
