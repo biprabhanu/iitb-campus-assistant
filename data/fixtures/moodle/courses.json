@@ -1,0 +1,26 @@
+[
+  {
+    "id": 90101,
+    "short_name": "IE624",
+    "full_name": "Decision Analytics (demo)",
+    "url": "https://moodle.iitb.ac.in/course/view.php?id=90101"
+  },
+  {
+    "id": 90102,
+    "short_name": "IE611",
+    "full_name": "Stochastic Models (demo)",
+    "url": "https://moodle.iitb.ac.in/course/view.php?id=90102"
+  },
+  {
+    "id": 90103,
+    "short_name": "HS101",
+    "full_name": "Introduction to Economics (demo)",
+    "url": "https://moodle.iitb.ac.in/course/view.php?id=90103"
+  },
+  {
+    "id": 90104,
+    "short_name": "MA205",
+    "full_name": "Linear Algebra Tools (demo)",
+    "url": "https://moodle.iitb.ac.in/course/view.php?id=90104"
+  }
+]

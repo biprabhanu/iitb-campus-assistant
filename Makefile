@@ -67,7 +67,7 @@ e2e: ## Playwright smoke test only
 	cd $(WEB_DIR) && npx playwright test
 
 screenshots: ## Regenerate docs/screenshots with Playwright
-	cd $(WEB_DIR) && npx playwright test --project=screenshots
+	cd $(WEB_DIR) && SCREENSHOTS=1 npx playwright test --project=screenshots
 
 tunnel-check: ## Is the model tunnel up?
 	@curl -s -m 5 http://127.0.0.1:11500/api/tags >/dev/null && echo "tunnel: up" || echo "tunnel: DOWN (run: ssh -fN passpoli-llm)"

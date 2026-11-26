@@ -1,0 +1,74 @@
+[
+  {
+    "id": "assign-70011",
+    "kind": "assignment",
+    "course": "IE624",
+    "title": "Assignment 3: Prototype report",
+    "due_in_hours": 20,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5101"
+  },
+  {
+    "id": "assign-70012",
+    "kind": "assignment",
+    "course": "IE611",
+    "title": "Problem Set 4",
+    "due_in_hours": 52,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5201"
+  },
+  {
+    "id": "event-80021",
+    "kind": "event",
+    "course": "HS101",
+    "title": "Quiz 2 closes",
+    "due_in_hours": 70,
+    "activity_url": "https://moodle.iitb.ac.in/mod/quiz/view.php?id=5301"
+  },
+  {
+    "id": "assign-70013",
+    "kind": "assignment",
+    "course": "MA205",
+    "title": "Homework 6",
+    "due_in_hours": 96,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5401"
+  },
+  {
+    "id": "assign-70014",
+    "kind": "assignment",
+    "course": "IE624",
+    "title": "Project proposal revision",
+    "due_in_hours": 140,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5102"
+  },
+  {
+    "id": "event-80022",
+    "kind": "event",
+    "course": "IE611",
+    "title": "Midsem feedback form closes",
+    "due_in_hours": 160,
+    "activity_url": "https://moodle.iitb.ac.in/mod/quiz/view.php?id=5202"
+  },
+  {
+    "id": "assign-70015",
+    "kind": "assignment",
+    "course": "HS101",
+    "title": "Term paper draft",
+    "due_in_hours": 240,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5302"
+  },
+  {
+    "id": "assign-70016",
+    "kind": "assignment",
+    "course": "IE611",
+    "title": "Problem Set 5",
+    "due_in_hours": 330,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5203"
+  },
+  {
+    "id": "assign-70017",
+    "kind": "assignment",
+    "course": "IE624",
+    "title": "Final project submission",
+    "due_in_hours": 600,
+    "activity_url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5103"
+  }
+]

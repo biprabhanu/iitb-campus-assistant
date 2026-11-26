@@ -1,0 +1,135 @@
+{
+  "IE624": [
+    {
+      "name": "General",
+      "resources": [
+        {
+          "name": "Course announcements",
+          "type": "forum",
+          "url": "https://moodle.iitb.ac.in/mod/forum/view.php?id=5100"
+        },
+        {
+          "name": "Syllabus and grading",
+          "type": "resource",
+          "url": "https://moodle.iitb.ac.in/mod/resource/view.php?id=5104"
+        }
+      ]
+    },
+    {
+      "name": "Week 1: Problem framing",
+      "resources": [
+        {
+          "name": "Lecture 1 slides",
+          "type": "resource",
+          "url": "https://moodle.iitb.ac.in/mod/resource/view.php?id=5105"
+        },
+        {
+          "name": "Reading list",
+          "type": "url",
+          "url": "https://moodle.iitb.ac.in/mod/url/view.php?id=5106"
+        }
+      ]
+    },
+    {
+      "name": "Assignments",
+      "resources": [
+        {
+          "name": "Assignment 3: Prototype report",
+          "type": "assign",
+          "url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5101"
+        },
+        {
+          "name": "Project proposal revision",
+          "type": "assign",
+          "url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5102"
+        }
+      ]
+    }
+  ],
+  "IE611": [
+    {
+      "name": "General",
+      "resources": [
+        {
+          "name": "Course outline",
+          "type": "resource",
+          "url": "https://moodle.iitb.ac.in/mod/resource/view.php?id=5204"
+        },
+        {
+          "name": "Discussion forum",
+          "type": "forum",
+          "url": "https://moodle.iitb.ac.in/mod/forum/view.php?id=5200"
+        }
+      ]
+    },
+    {
+      "name": "Markov chains",
+      "resources": [
+        {
+          "name": "Lecture notes 1-3",
+          "type": "folder",
+          "url": "https://moodle.iitb.ac.in/mod/folder/view.php?id=5205"
+        },
+        {
+          "name": "Problem Set 4",
+          "type": "assign",
+          "url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5201"
+        }
+      ]
+    }
+  ],
+  "HS101": [
+    {
+      "name": "General",
+      "resources": [
+        {
+          "name": "Syllabus",
+          "type": "resource",
+          "url": "https://moodle.iitb.ac.in/mod/resource/view.php?id=5303"
+        }
+      ]
+    },
+    {
+      "name": "Micro basics",
+      "resources": [
+        {
+          "name": "Chapter 3 reading",
+          "type": "page",
+          "url": "https://moodle.iitb.ac.in/mod/page/view.php?id=5304"
+        },
+        {
+          "name": "Quiz 2",
+          "type": "quiz",
+          "url": "https://moodle.iitb.ac.in/mod/quiz/view.php?id=5301"
+        }
+      ]
+    }
+  ],
+  "MA205": [
+    {
+      "name": "General",
+      "resources": [
+        {
+          "name": "Announcements",
+          "type": "forum",
+          "url": "https://moodle.iitb.ac.in/mod/forum/view.php?id=5400"
+        }
+      ]
+    },
+    {
+      "name": "Eigenvalues",
+      "resources": [
+        {
+          "name": "Tutorial sheet 5",
+          "type": "resource",
+          "url": "https://moodle.iitb.ac.in/mod/resource/view.php?id=5405"
+        },
+        {
+          "name": "Homework 6",
+          "type": "assign",
+          "url": "https://moodle.iitb.ac.in/mod/assign/view.php?id=5401"
+        }
+      ]
+    }
+  ]
+}
