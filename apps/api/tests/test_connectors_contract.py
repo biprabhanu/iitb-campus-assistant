@@ -33,9 +33,14 @@ CONNECTOR_TOOLS = {
     "search_my_mail",
     "list_recent_mail",
     "get_upcoming_institute_events",
-    "get_my_timetable",
-    "get_my_registered_courses",
-    "get_my_grades",
+    "asc_profile",
+    "asc_my_timetable",
+    "asc_my_current_courses",
+    "asc_registration_status",
+    "asc_fee_status",
+    "asc_offered_courses",
+    "asc_course_offering_history",
+    "asc_course_details",
 }
 CONFIRM = {"X-CampusPilot-Confirm": "yes"}
 
@@ -237,9 +242,9 @@ async def test_connector_tool_is_ignored_when_its_flag_is_off(monkeypatch) -> No
     from tests.backend_helpers import install_fake_tools
 
     install_fake_tools(monkeypatch)
-    llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_grades")]), LLMReply(content="ok")])
+    llm = ScriptedLLM([LLMReply(tool_calls=[call("asc_profile")]), LLMReply(content="ok")])
     events, trace = await _run(llm, "show my grades please")
-    assert "get_my_grades" not in trace.tools
+    assert "asc_profile" not in trace.tools
     assert "cards" not in names(events)
 
 
@@ -267,10 +272,10 @@ async def test_connector_failure_tells_the_student_without_secrets(monkeypatch) 
     async def unreachable(args):  # independent of how Worker B's module behaves
         raise ConnectorError("unreachable", message)
 
-    monkeypatch.setattr(campuspilot.asc, "get_my_timetable", unreachable)
-    llm = ScriptedLLM([LLMReply(tool_calls=[call("get_my_timetable", when="tomorrow")])])
+    monkeypatch.setattr(campuspilot.asc, "asc_my_timetable", unreachable)
+    llm = ScriptedLLM([LLMReply(tool_calls=[call("asc_my_timetable", day="tomorrow")])])
     events, _ = await _run(llm, "what's my timetable tomorrow?")
-    assert ("get_my_timetable", "error") in [
+    assert ("asc_my_timetable", "error") in [
         (d["name"], d["state"]) for n, d in events if n == "tool"
     ]
     assert message in answer_text(events)  # the module's friendly message reaches the student

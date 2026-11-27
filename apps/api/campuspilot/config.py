@@ -113,10 +113,13 @@ class Settings(BaseSettings):
     imap_timeout_s: float = 20.0
     mail_max_scan: int = 200  # most recent mails looked at per question
     webmail_url: str = "https://webmail.iitb.ac.in"  # base for "open this mail" links
-    # ASC (internal portal: campus network or IITB VPN; login through IITB SSO with LDAP).
+    # ASC Internal (campus network or IITB VPN; plain LDAP form). CONTRACT §11.8
     asc_base_url: str = "https://asc.iitb.ac.in"
-    asc_timeout_s: float = 20.0
-    asc_cache_ttl_s: int = 300
+    asc_timeout_s: float = 15.0  # per request
+    asc_min_interval_s: float = 1.0  # one request at a time, about 1 s apart
+    asc_snapshot_ttl_s: int = 6 * 3600  # personal snapshot, memory only
+    asc_public_cache_dir: Path = Path("~/.campuspilot/cache")  # public course lists, on disk
+    asc_public_cache_ttl_s: int = 24 * 3600
     # Google Calendar (OAuth "Desktop app" client; the JSON file stays outside the repo).
     gcal_client_file: Path = Path("~/.campuspilot/google_client.json")
     gcal_calendar_id: str = "primary"  # Phase 2 live tests use a separate test calendar
@@ -167,7 +170,7 @@ class Settings(BaseSettings):
         # Relative paths in .env mean "relative to the repo root", whatever the cwd is.
         return value if value.is_absolute() else REPO_ROOT / value
 
-    @field_validator("gcal_client_file", mode="after")
+    @field_validator("gcal_client_file", "asc_public_cache_dir", mode="after")
     @classmethod
     def _expand_home(cls, value: Path) -> Path:
         return value.expanduser()

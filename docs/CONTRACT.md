@@ -469,3 +469,81 @@ CALENDAR_ERROR, `not_implemented`→501 NOT_AVAILABLE.
   header → "Added ✓ · View in Calendar" (`html_link`), or "Connect Google Calendar" when
   `can_add_to_calendar` is false because it isn't connected, or "Date unclear, open the mail".
   Demo cards say "Demo data". Mock SSE journeys for the three example questions; Playwright tests.
+
+### 11.8 ASC v2: ASC Internal, LDAP login, snapshot, local-model routing (27 Nov 2026)
+
+Replaces the guessed ASC tools of §11.3 (`get_my_timetable`, `get_my_registered_courses`,
+`get_my_grades` are gone). Page map and login flow: `ASC_CONNECTOR_PROMPT.md` (source of truth for
+paths, menu labels and page layouts). Owner decisions are in `docs/BUILD_LOG.md`.
+
+**Login.** Settings → Connectors → ASC: LDAP id + password, Keychain only (`asc_username`,
+`asc_password`). Plain form: `GET /acadmenu/` (frameset) → `WebPages/Login.jsp` (`loginForm`,
+`UserName`, `UserPassword`) → `POST /acadmenu/WebPages/ldaplogin.jsp` (not following redirects) →
+`GET /acadmenu/menu.jsp` must contain "Sign out" (`index.jsp?logout=yes`), else `auth_failed`.
+No OTP: `POST /v1/connectors/asc/otp` answers `otp_invalid`. Logout: `GET /acadmenu/index.jsp?logout=yes`.
+
+**Menu tokens.** Page links are read from `menu.jsp` after every login, by label and target page
+(`pages.MENU_LINKS`), kept in memory only, never logged, never stored, never in an error.
+
+**Snapshot (personal data).** After login and on demand, CampusPilot reads every personal page into
+one `AscSnapshot` held **in memory only** (never on disk): profile, timetable, current courses,
+registration status, fee status, `fetched_at`. Refreshed when older than 6 h
+(`ASC_SNAPSHOT_TTL_S=21600`) or on `POST /v1/connectors/asc/refresh` (confirm header; returns
+`ConnectorStatus` with `refreshed_at`). One page failing keeps the others; that tool then raises.
+
+**Public course data** (running courses, offering history, details, prerequisites, syllabus) is
+read per request and cached on disk for 24 h under `~/.campuspilot/cache/asc/`
+(`ASC_PUBLIC_CACHE_DIR`), department x year x semester. Not personal.
+
+| Tool | Input | Output | Card(s) | local_only | Label |
+|---|---|---|---|---|---|
+| `asc_profile` | `AscProfileInput{}` | `AscProfileOutput` | `asc_profile` | yes | "Reading your ASC profile" |
+| `asc_my_timetable` | `AscMyTimetableInput{day?}` | `AscTimetableOutput` | `asc_slot` | yes | "Reading your ASC timetable" |
+| `asc_my_current_courses` | `AscCurrentCoursesInput{}` | `AscCoursesOutput` | `asc_course` | yes | "Reading your ASC courses" |
+| `asc_registration_status` | `AscRegistrationStatusInput{}` | `AscRegistrationOutput` | `asc_course` | yes | "Checking your ASC registration" |
+| `asc_fee_status` | `AscFeeStatusInput{}` | `AscFeeStatusOutput` | `asc_fee` | yes | "Checking your ASC fee status" |
+| `asc_offered_courses` | `AscOfferedCoursesInput{dept, year, semester}` | `AscOfferedCoursesOutput` | `asc_course` | no | "Reading ASC running courses" |
+| `asc_course_offering_history` | `AscCourseHistoryInput{course_code}` | `AscCourseHistoryOutput` | `asc_history` | no | "Checking when the course runs" |
+| `asc_course_details` | `AscCourseDetailsInput{course_code}` | `AscCourseDetailsOutput` | `asc_detail` | no | "Reading the course details on ASC" |
+
+All eight are kind `asc`: results go to the UI as cards plus a template sentence
+(`agent/personal_answer.py`); the chat model sees only a count. `ToolSpec.timeout_s` overrides
+`TOOL_TIMEOUT_S` for these tools.
+
+**Local-model routing (privacy).** `local_only` tools are offered only when the chat model is local:
+`llm.mode in {"live", "mock"}` (Ollama/Gemma via the tunnel, or the offline mock). With a cloud
+model (`byok`, `fallback`) only the public ASC tools are offered, and a question about the
+student's own ASC data (`agent/asc_intent.py`: my timetable/classes, my courses, registration
+status, fees, profile, advisor, academic standing, validity) is answered, without any tool, with
+exactly: "That needs your ASC data, which CampusPilot only shares with the local model. Switch to
+Local Gemma in Settings." (`answer_kind` "personal").
+
+**Never read, ever:** grades, SPI/CPI, the performance summary (parser drops those tables and the
+Grade column; the Grade cell is only checked for empty to find the current semester), bank
+details, "Canara Bank Authorisation Letter", "Pay Convo Fees", "Update/Apply for scholarship",
+"Registration/Adjustment", "Course Withdraw", "Course Feedback", Alumni/Convo forms
+(`pages.FORBIDDEN_LABELS` plus keyword guards: bank, canara, pay, apply, update, feedback, alumni,
+convo, withdraw, adjustment).
+
+**Allowlist** (`pages.path_allowed`): the login pages, `menu.jsp`, `VenueOccupancy.jsp`,
+`AcademicRecord.jsp`, `CRFFormInput.jsp` (GET only), `allDept.jsp`, `RunningCourses.jsp`,
+`crsedetail.jsp`, `newallCourse.jsp` (syllabus, listed by the owner), `Prereq`, `TTcheck.jsp`, and
+the fee status page. Until the fee page is mapped live, its page name is taken from the menu leaf
+labelled "Fees Status/Scholarship" at login (only if its label/URL hits no forbidden keyword) and
+allowed for that session only; after live mapping it is pinned in `pages.FEE_PAGE`. POST only to
+`ldaplogin.jsp` and the GO forms of `allDept.jsp` / `RunningCourses.jsp`. One request at a time,
+`ASC_MIN_INTERVAL_S=1` apart, `ASC_TIMEOUT_S=15`. Session expiry (menu shows "Sign in", or a page
+comes back as the login form): log in again once, then `session_expired`.
+
+**Never logged:** LDAP id/password, roll number, name, advisor names, fee amounts, menu/token URLs,
+page text. httpx/httpcore records are dropped during ASC requests.
+
+**Errors:** unreachable = "ASC needs the campus network or IITB VPN."; `auth_failed` = "ASC rejected
+the LDAP id or password.".
+
+**Settings text (ASC card):** "...timetable, courses, registration, profile and fee status. Grades
+are never read." plus a "Refresh ASC data" button (shows `refreshed_at`).
+
+**`make asc-check`** (`scripts/asc_check.py`): uses the Keychain login, prints counts only:
+timetable slots, current courses, registration window open/closed + count, fee rows, profile
+fields filled, offered IE courses Autumn 2026.

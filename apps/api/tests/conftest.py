@@ -47,6 +47,9 @@ def isolated_settings(tmp_path, monkeypatch) -> Iterator[None]:
     # Scripted LLMs in tests don't expect the extra clarify call; tests that need it opt in.
     monkeypatch.setenv("CLARIFY_PRECHECK", "false")
     monkeypatch.setenv("AUTO_OFFICIAL_LINKS", "false")
+    # ASC: no 1 s politeness gap in tests; public course cache in a temp folder.
+    monkeypatch.setenv("ASC_MIN_INTERVAL_S", "0")
+    monkeypatch.setenv("ASC_PUBLIC_CACHE_DIR", str(tmp_path / "cache"))
     config.get_settings.cache_clear()
     yield
     config.get_settings.cache_clear()

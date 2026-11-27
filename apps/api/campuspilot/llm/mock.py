@@ -76,13 +76,7 @@ def _route_connectors(low: str, text: str) -> list[ToolCall]:
     if is_mail_question(text):  # "check my webmail latest msg", "any mail from gymkhana"...
         name, args = mail_tool_call(text)
         return [ToolCall(name, args)]
-    if re.search(r"timetable|\bclasses\b", low):
-        when = "tomorrow" if "tomorrow" in low else "this_week" if "week" in low else "today"
-        return [ToolCall("get_my_timetable", {"when": when})]
-    if re.search(r"\bgrades?\b|\bspi\b|\bcpi\b", low):
-        return [ToolCall("get_my_grades", {})]
-    if "registered" in low or ("asc" in low and "course" in low):
-        return [ToolCall("get_my_registered_courses", {})]
+    # ASC routes: Worker B (CONTRACT §11.8).
     return []
 
 

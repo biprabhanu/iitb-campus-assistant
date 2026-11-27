@@ -13,10 +13,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from campuspilot.schemas.connectors import (
-    AscCoursesOutput,
-    AscGradesOutput,
-    AscTimetableOutput,
-    GetMyTimetableInput,
     ListRecentMailInput,
     ListRecentMailOutput,
     SearchMyMailInput,
@@ -85,47 +81,23 @@ def events_sentence(args: UpcomingEventsInput, out: UpcomingEventsOutput) -> str
     return text
 
 
-def timetable_sentence(args: GetMyTimetableInput, out: AscTimetableOutput) -> str:
-    if args.on_date is not None:
-        scope = f"on {_day(args.on_date)}"
-    elif args.when == "this_week":
-        scope = "this week"
-    else:
-        day = f" ({_day(out.for_dates[0])})" if len(out.for_dates) == 1 else ""
-        scope = f"{args.when}{day}"
-    if not out.slots:
-        return f"Your ASC timetable shows no classes {scope}."
-    return f"You have {_plural(len(out.slots), 'class', 'classes')} {scope}."
-
-
-def asc_courses_sentence(out: AscCoursesOutput) -> str:
-    sem = f" for {out.semester}" if out.semester else ""
-    if not out.courses:
-        text = f"ASC shows no registered courses{sem}."
-    else:
-        text = f"ASC shows {_plural(len(out.courses), 'course')}{sem}."
-    if out.registration_note:
-        text += f" {out.registration_note}"
-    return text
-
-
-def grades_sentence(out: AscGradesOutput) -> str:
-    if not out.grades:
-        return "ASC shows no grades yet."
-    text = f"Here are your grades from ASC ({_plural(len(out.grades), 'course')})."
-    scores = [f"{k} {v}" for k, v in (("SPI", out.spi), ("CPI", out.cpi)) if v]
-    if scores:
-        text += f" {', '.join(scores)} (as shown on ASC)."
-    return text
+def asc_sentence(tool_name: str, args: Any, output: Any) -> str:
+    """Phase 0 placeholder (Worker B writes one sentence per ASC tool, CONTRACT §11.8)."""
+    return "Here is what ASC shows."
 
 
 _DEMO = {
     "search_my_mail": "mails",
     "list_recent_mail": "mails",
     "get_upcoming_institute_events": "events",
-    "get_my_timetable": "timetable entries",
-    "get_my_registered_courses": "courses",
-    "get_my_grades": "grades",
+    "asc_profile": "ASC data",
+    "asc_my_timetable": "timetable entries",
+    "asc_my_current_courses": "courses",
+    "asc_registration_status": "courses",
+    "asc_fee_status": "fee entries",
+    "asc_offered_courses": "courses",
+    "asc_course_offering_history": "course runs",
+    "asc_course_details": "course details",
 }
 
 
@@ -137,12 +109,8 @@ def personal_sentence(tool_name: str, args: Any, output: Any) -> str:
         text = recent_mail_sentence(args, output)
     elif tool_name == "get_upcoming_institute_events":
         text = events_sentence(args, output)
-    elif tool_name == "get_my_timetable":
-        text = timetable_sentence(args, output)
-    elif tool_name == "get_my_registered_courses":
-        text = asc_courses_sentence(output)
     else:
-        text = grades_sentence(output)
+        text = asc_sentence(tool_name, args, output)
     parts = [text]
     if output.note:
         parts.append(output.note)

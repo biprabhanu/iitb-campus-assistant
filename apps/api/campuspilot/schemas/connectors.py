@@ -5,7 +5,7 @@ Calendar event the student clicked "Add" on (`POST /v1/calendar/events`), which 
 tool the model can call.
 
 Privacy rules these models are designed around:
-- Mail bodies, ASC pages and grades never leave the API except as these card fields, and are
+- Mail bodies and ASC pages never leave the API except as these card fields, and are
   never logged. The chat model only learns how many items a tool found (like Moodle, §10.4).
 - Nothing here carries a password, OTP, session cookie or OAuth token.
 """
@@ -46,6 +46,7 @@ class ConnectorStatus(BaseModel):
     message: str | None = None  # friendly text for "error" / "needs_otp"
     challenge_id: str | None = None  # set with state="needs_otp"; send back with the code
     demo: bool = False  # CONNECTORS_DEMO=true: fixture data, labelled "Demo data" in the UI
+    refreshed_at: datetime | None = None  # ASC: when the personal snapshot was last read
 
 
 class ConnectorsResponse(BaseModel):
@@ -177,19 +178,30 @@ class UpcomingEventsOutput(BaseModel):
     note: str = ""
 
 
-# ---------- ASC ----------
+# ---------- ASC Internal (LDAP login; CONTRACT §11.8, ASC_CONNECTOR_PROMPT.md) ----------
+# NEVER modelled or read: grades, SPI/CPI, the performance summary, bank details. The parsers
+# drop those tables/columns before anything is returned.
 
 Weekday = Literal["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+SemesterName = Literal["autumn", "spring", "summer", "winter"]
+_COURSE_CODE = r"^[A-Za-z]{2,4}\s?\d{3}[A-Za-z]?$"
 
 
 class AscCourse(BaseModel):
-    code: str  # e.g. "IE 624"
+    """A course as ASC shows it (academic record, registration status or running courses)."""
+
+    code: str  # normalised "IE 624"
     title: str = ""
     credits: float | None = None
     slot: str | None = None
     instructor: str | None = None
+    venue: str | None = None
+    tag: str | None = None  # academic record "Tag"
+    credit_audit: str | None = None  # "Credit" / "Audit"
+    course_type: str | None = None  # running courses "Course Type"
+    division: str | None = None
     status: Literal["registered", "approved", "pending", "dropped", "audit", "other"] = "other"
-    semester: str = ""  # as ASC writes it, e.g. "2026-27 Autumn"
+    semester: str = ""  # e.g. "2026-27 Autumn"
 
 
 class AscTimetableSlot(BaseModel):
@@ -199,54 +211,135 @@ class AscTimetableSlot(BaseModel):
     start: str = Field(pattern=r"^\d{2}:\d{2}$")  # "HH:MM", Asia/Kolkata
     end: str = Field(pattern=r"^\d{2}:\d{2}$")
     venue: str | None = None
+    instructor: str | None = None
     slot: str | None = None
     kind: Literal["lecture", "tutorial", "lab", "other"] = "lecture"
 
 
-class AscGrade(BaseModel):
-    """Sensitive. Shown only when the student asks; never logged, never sent to a model."""
+class AscProfile(BaseModel):
+    """AcademicRecord.jsp table 1, minus roll number and name. Never logged."""
 
-    course_code: str
-    course_title: str = ""
+    department: str = ""
+    program: str = ""
+    status: str = ""
+    validity: str = ""  # "Program/Semester validity"
+    academic_standing: str = ""
+    advisors: list[str] = Field(default_factory=list)
+
+
+class AscFeeItem(BaseModel):
+    """One row of the fee status / amount-due tables. Amounts as ASC writes them. Never logged."""
+
+    label: str
+    amount: str | None = None
+    due_date: str | None = None
+    status: str | None = None  # e.g. "Paid", "Due"
+
+
+class AscCourseDetail(BaseModel):
+    code: str
+    title: str = ""
     credits: float | None = None
-    grade: str
-    semester: str = ""
+    department: str = ""
+    prerequisites: list[str] = Field(default_factory=list)
+    syllabus: str = Field(default="", max_length=3000)  # trimmed text
+    extra: dict[str, str] = Field(default_factory=dict)  # other label: value pairs shown on ASC
 
 
-class GetMyTimetableInput(_StrictInput):
-    when: Literal["today", "tomorrow", "this_week"] = "today"
-    on_date: date | None = None  # a specific day; overrides `when`
+class AscOffering(BaseModel):
+    year: int  # start year of the academic year: 2026 = 2026-27
+    semester: SemesterName
+    offered: bool
 
 
-class AscTimetableOutput(BaseModel):
-    slots: list[AscTimetableSlot] = Field(default_factory=list)  # sorted by day then start
-    for_dates: list[date] = Field(default_factory=list)  # the days the slots cover
+# --- inputs ---
+
+
+class AscProfileInput(_StrictInput):
+    pass
+
+
+class AscMyTimetableInput(_StrictInput):
+    # None = the whole week; "today" / "tomorrow" in Asia/Kolkata; or one weekday.
+    day: Literal["today", "tomorrow", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] | None = None
+
+
+class AscCurrentCoursesInput(_StrictInput):
+    pass
+
+
+class AscRegistrationStatusInput(_StrictInput):
+    pass
+
+
+class AscFeeStatusInput(_StrictInput):
+    pass
+
+
+class AscOfferedCoursesInput(_StrictInput):
+    dept: str = Field(pattern=r"^[A-Za-z]{2,4}$")  # e.g. "IE"
+    year: int = Field(ge=2000, le=2100)  # start year of the academic year
+    semester: SemesterName = "autumn"
+
+
+class AscCourseHistoryInput(_StrictInput):
+    course_code: str = Field(pattern=_COURSE_CODE)
+
+
+class AscCourseDetailsInput(_StrictInput):
+    course_code: str = Field(pattern=_COURSE_CODE)
+
+
+# --- outputs (each with demo + note, like the other connectors) ---
+
+
+class _AscOut(BaseModel):
     demo: bool = False
     note: str = ""
+    fetched_at: datetime | None = None  # when the snapshot (or public list) was read from ASC
 
 
-class GetMyRegisteredCoursesInput(_StrictInput):
-    semester: str | None = Field(default=None, max_length=40)  # None = current semester
+class AscProfileOutput(_AscOut):
+    profile: AscProfile = Field(default_factory=AscProfile)
 
 
-class AscCoursesOutput(BaseModel):
+class AscTimetableOutput(_AscOut):
+    slots: list[AscTimetableSlot] = Field(default_factory=list)  # sorted by day then start
+    for_dates: list[date] = Field(default_factory=list)  # set for "today" / "tomorrow"
+
+
+class AscCoursesOutput(_AscOut):
     courses: list[AscCourse] = Field(default_factory=list)
     semester: str = ""
-    registration_note: str = ""  # e.g. "Registration is open until 4 Dec" if ASC shows it
-    demo: bool = False
-    note: str = ""
 
 
-class GetMyGradesInput(_StrictInput):
-    semester: str | None = Field(default=None, max_length=40)  # None = all semesters
+class AscRegistrationOutput(_AscOut):
+    # False when ASC sends the Status link to AcademicRecord.jsp (outside the window); the
+    # courses are then this semester's registered courses.
+    window_open: bool = False
+    courses: list[AscCourse] = Field(default_factory=list)
+    semester: str = ""
 
 
-class AscGradesOutput(BaseModel):
-    grades: list[AscGrade] = Field(default_factory=list)
-    spi: str | None = None  # as ASC shows them; never computed by us
-    cpi: str | None = None
-    demo: bool = False
-    note: str = ""
+class AscFeeStatusOutput(_AscOut):
+    items: list[AscFeeItem] = Field(default_factory=list)
+
+
+class AscOfferedCoursesOutput(_AscOut):
+    dept: str
+    year: int
+    semester: SemesterName
+    courses: list[AscCourse] = Field(default_factory=list)
+
+
+class AscCourseHistoryOutput(_AscOut):
+    course_code: str
+    title: str = ""
+    offerings: list[AscOffering] = Field(default_factory=list)  # every year x semester checked
+
+
+class AscCourseDetailsOutput(_AscOut):
+    detail: AscCourseDetail | None = None
 
 
 # ---------- Google Calendar (the only write; UI click only) ----------
@@ -315,13 +408,40 @@ class AscCourseCard(_Card):
     course: AscCourse
 
 
-class AscGradeCard(_Card):
-    type: Literal["asc_grade"] = "asc_grade"
+class AscProfileCard(_Card):
+    type: Literal["asc_profile"] = "asc_profile"
     source_label: Literal["ASC"] = "ASC"
-    grade: AscGrade
+    profile: AscProfile
+
+
+class AscFeeCard(_Card):
+    type: Literal["asc_fee"] = "asc_fee"
+    source_label: Literal["ASC"] = "ASC"
+    fee: AscFeeItem
+
+
+class AscHistoryCard(_Card):
+    type: Literal["asc_history"] = "asc_history"
+    source_label: Literal["ASC"] = "ASC"
+    course_code: str
+    title: str = ""
+    offerings: list[AscOffering] = Field(default_factory=list)
+
+
+class AscDetailCard(_Card):
+    type: Literal["asc_detail"] = "asc_detail"
+    source_label: Literal["ASC"] = "ASC"
+    detail: AscCourseDetail
 
 
 Card = Annotated[
-    MailCard | EventCard | AscSlotCard | AscCourseCard | AscGradeCard,
+    MailCard
+    | EventCard
+    | AscSlotCard
+    | AscCourseCard
+    | AscProfileCard
+    | AscFeeCard
+    | AscHistoryCard
+    | AscDetailCard,
     Field(discriminator="type"),
 ]

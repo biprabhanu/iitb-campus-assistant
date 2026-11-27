@@ -13,9 +13,17 @@ from typing import Any
 from campuspilot.config import get_settings
 from campuspilot.schemas.connectors import (
     AscCourseCard,
+    AscCourseDetailsOutput,
+    AscCourseHistoryOutput,
     AscCoursesOutput,
-    AscGradeCard,
-    AscGradesOutput,
+    AscDetailCard,
+    AscFeeCard,
+    AscFeeStatusOutput,
+    AscHistoryCard,
+    AscOfferedCoursesOutput,
+    AscProfileCard,
+    AscProfileOutput,
+    AscRegistrationOutput,
     AscSlotCard,
     AscTimetableOutput,
     EventCard,
@@ -25,7 +33,10 @@ from campuspilot.schemas.connectors import (
     UpcomingEventsOutput,
 )
 
-_PREFIX = {"mail": "W", "event": "E", "asc_slot": "A", "asc_course": "A", "asc_grade": "A"}
+_PREFIX = {"mail": "W", "event": "E"} | {
+    t: "A"
+    for t in ("asc_slot", "asc_course", "asc_profile", "asc_fee", "asc_history", "asc_detail")
+}
 
 
 def _calendar_connected() -> bool:
@@ -73,8 +84,36 @@ def from_asc_courses(output: AscCoursesOutput) -> list[Any]:
     return [AscCourseCard(id="", demo=output.demo, course=c) for c in output.courses]
 
 
-def from_grades(output: AscGradesOutput) -> list[Any]:
-    return [AscGradeCard(id="", demo=output.demo, grade=g) for g in output.grades]
+def from_asc_profile(output: AscProfileOutput) -> list[Any]:
+    return [AscProfileCard(id="", demo=output.demo, profile=output.profile)]
+
+
+def from_asc_registration(output: AscRegistrationOutput) -> list[Any]:
+    return [AscCourseCard(id="", demo=output.demo, course=c) for c in output.courses]
+
+
+def from_asc_fees(output: AscFeeStatusOutput) -> list[Any]:
+    return [AscFeeCard(id="", demo=output.demo, fee=f) for f in output.items]
+
+
+def from_asc_offered(output: AscOfferedCoursesOutput) -> list[Any]:
+    return [AscCourseCard(id="", demo=output.demo, course=c) for c in output.courses]
+
+
+def from_asc_history(output: AscCourseHistoryOutput) -> list[Any]:
+    return [
+        AscHistoryCard(
+            id="",
+            demo=output.demo,
+            course_code=output.course_code,
+            title=output.title,
+            offerings=output.offerings,
+        )
+    ]
+
+
+def from_asc_detail(output: AscCourseDetailsOutput) -> list[Any]:
+    return [AscDetailCard(id="", demo=output.demo, detail=output.detail)] if output.detail else []
 
 
 def number_cards(cards: list[Any], counters: dict[str, int]) -> list[Any]:

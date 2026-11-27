@@ -18,9 +18,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from campuspilot.config import Settings, get_settings
 from campuspilot.schemas.connectors import (
-    GetMyGradesInput,
-    GetMyRegisteredCoursesInput,
-    GetMyTimetableInput,
+    AscCourseDetailsInput,
+    AscCourseHistoryInput,
+    AscCurrentCoursesInput,
+    AscFeeStatusInput,
+    AscMyTimetableInput,
+    AscOfferedCoursesInput,
+    AscProfileInput,
+    AscRegistrationStatusInput,
     ListRecentMailInput,
     SearchMyMailInput,
     UpcomingEventsInput,
@@ -63,6 +68,10 @@ class ToolSpec:
     to_evidence: Callable[[Any], ev.ToolEvidence] | None = None
     # v2 connectors (mail / asc): output -> cards for the UI (ids are filled in per turn).
     to_cards: Callable[[Any], list[Any]] | None = None
+    # The student's own ASC data: offered only when the chat model is local (CONTRACT §11.8).
+    local_only: bool = False
+    # Overrides Settings.tool_timeout_s (ASC reads several slow pages, ~1 s apart).
+    timeout_s: float | None = None
 
 
 # ---------- lazy callers ----------
@@ -125,16 +134,11 @@ async def _upcoming_events(args: UpcomingEventsInput) -> Any:
     return await _call_connector("mail", "get_upcoming_institute_events", args)
 
 
-async def _timetable(args: GetMyTimetableInput) -> Any:
-    return await _call_connector("asc", "get_my_timetable", args)
+def _asc(name: str) -> Callable[[Any], Awaitable[Any]]:
+    async def run(args: Any) -> Any:
+        return await _call_connector("asc", name, args)
 
-
-async def _asc_courses(args: GetMyRegisteredCoursesInput) -> Any:
-    return await _call_connector("asc", "get_my_registered_courses", args)
-
-
-async def _grades(args: GetMyGradesInput) -> Any:
-    return await _call_connector("asc", "get_my_grades", args)
+    return run
 
 
 async def _clarify(args: AskClarificationInput) -> AskClarificationInput:
@@ -221,32 +225,97 @@ _SPECS = [
         _upcoming_events,
         to_cards=cd.from_events,
     ),
+    # ASC (CONTRACT §11.8). local_only = the student's own data: offered only when the chat
+    # model is the local one (Ollama/Gemma, or the offline mock). Public course data: any model.
     ToolSpec(
-        "get_my_timetable",
-        "The student's class timetable from ASC (read-only).",
-        GetMyTimetableInput,
+        "asc_profile",
+        "The student's ASC profile: department, program, status, validity, academic standing "
+        "and faculty advisors (read-only).",
+        AscProfileInput,
+        "Reading your ASC profile",
+        "asc",
+        _asc("asc_profile"),
+        to_cards=cd.from_asc_profile,
+        local_only=True,
+        timeout_s=45.0,
+    ),
+    ToolSpec(
+        "asc_my_timetable",
+        "The student's class timetable from ASC. day: today, tomorrow, Mon..Sun, or omit for "
+        "the whole week (read-only).",
+        AscMyTimetableInput,
         "Reading your ASC timetable",
         "asc",
-        _timetable,
+        _asc("asc_my_timetable"),
         to_cards=cd.from_timetable,
+        local_only=True,
+        timeout_s=45.0,
     ),
     ToolSpec(
-        "get_my_registered_courses",
-        "The student's registered courses and registration status from ASC (read-only).",
-        GetMyRegisteredCoursesInput,
+        "asc_my_current_courses",
+        "The student's current-semester courses from ASC (read-only).",
+        AscCurrentCoursesInput,
         "Reading your ASC courses",
         "asc",
-        _asc_courses,
+        _asc("asc_my_current_courses"),
         to_cards=cd.from_asc_courses,
+        local_only=True,
+        timeout_s=45.0,
     ),
     ToolSpec(
-        "get_my_grades",
-        "The student's grades from ASC (read-only). Only when the student asks for grades.",
-        GetMyGradesInput,
-        "Reading your ASC grades",
+        "asc_registration_status",
+        "The student's course registration status on ASC, or this semester's registered courses "
+        "when the registration window is closed (read-only).",
+        AscRegistrationStatusInput,
+        "Checking your ASC registration",
         "asc",
-        _grades,
-        to_cards=cd.from_grades,
+        _asc("asc_registration_status"),
+        to_cards=cd.from_asc_registration,
+        local_only=True,
+        timeout_s=45.0,
+    ),
+    ToolSpec(
+        "asc_fee_status",
+        "The student's fee status and amounts due from ASC (read-only; never pays anything).",
+        AscFeeStatusInput,
+        "Checking your ASC fee status",
+        "asc",
+        _asc("asc_fee_status"),
+        to_cards=cd.from_asc_fees,
+        local_only=True,
+        timeout_s=45.0,
+    ),
+    ToolSpec(
+        "asc_offered_courses",
+        "Courses running in a department in a semester, from ASC. dept: prefix like IE; year: "
+        "start year of the academic year (2026 = 2026-27); semester: autumn/spring/summer/winter.",
+        AscOfferedCoursesInput,
+        "Reading ASC running courses",
+        "asc",
+        _asc("asc_offered_courses"),
+        to_cards=cd.from_asc_offered,
+        timeout_s=40.0,
+    ),
+    ToolSpec(
+        "asc_course_offering_history",
+        "In which semesters a course ran over the last 3 academic years (Autumn and Spring), "
+        "from ASC. Use for 'when is course X usually offered?'.",
+        AscCourseHistoryInput,
+        "Checking when the course runs",
+        "asc",
+        _asc("asc_course_offering_history"),
+        to_cards=cd.from_asc_history,
+        timeout_s=75.0,
+    ),
+    ToolSpec(
+        "asc_course_details",
+        "Details of one course from ASC: title, credits, prerequisites and syllabus.",
+        AscCourseDetailsInput,
+        "Reading the course details on ASC",
+        "asc",
+        _asc("asc_course_details"),
+        to_cards=cd.from_asc_detail,
+        timeout_s=40.0,
     ),
     ToolSpec(
         "ask_clarification",
