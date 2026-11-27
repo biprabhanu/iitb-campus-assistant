@@ -154,6 +154,6 @@ Generated and private files (`.env`, `data/campuspilot.db`, `data/raw/`, `.venv`
 
 [docs/EVAL.md](docs/EVAL.md) (acceptance numbers) · [docs/REPRODUCE.md](docs/REPRODUCE.md) (reproduce the build and the numbers) · [docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md) (using the pilot) · [docs/FINAL_REPORT.md](docs/FINAL_REPORT.md) (final report) · [docs/API.md](docs/API.md) · [docs/DEPLOY.md](docs/DEPLOY.md) · [docs/SOURCES.md](docs/SOURCES.md)
 
-## Team
+## Author
 
-TEAM_TBD
+Bipra Bhanu Mohanty (IE624 course project, IIT Bombay).
