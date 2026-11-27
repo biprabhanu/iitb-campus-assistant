@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from campuspilot.asc import parsers
+from campuspilot.asc import pages, parsers
 from campuspilot.asc.demo import fixture
 
 SENTINELS = ("8.76", "8.91", "AB", "BC", "AA", "BB")
@@ -102,13 +102,45 @@ def test_all_dept_and_running_courses() -> None:
     assert parsers.parse_running_courses(fixture("running_empty.html")) == []
 
 
-def test_course_detail_prereq_syllabus() -> None:
+def test_course_detail_live_layout() -> None:
     detail = parsers.parse_course_detail(fixture("crsedetail.html"), "IE 303")
     assert detail.title == "Fake Operations Research" and detail.credits == 6.0
-    assert detail.prerequisites == ["MA 105", "IE 201"] and "linear programming" in detail.syllabus
-    assert parsers.parse_prerequisites(fixture("prereq.html"), "IE 603") == ["IE 303"]
-    assert parsers.parse_prerequisites(fixture("prereq.html"), "IE 303") == ["MA 105", "IE 201"]
-    assert "network flows" in parsers.parse_syllabus(fixture("newall_course.html"), "IE 303")
+    assert detail.prerequisites == []  # the Prerequisite row is commented out in the live page
+    assert "linear programming" in detail.syllabus and "network flows" in detail.syllabus
+    assert "this line has a colon" in detail.syllabus
+    assert (
+        detail.extra.get("type") == "Theory"
+        and "invented author" in detail.extra["text reference"].casefold()
+    )
+    assert "students will formulate and solve small problems" not in detail.extra  # no line noise
+
+
+def test_prerequisites_live_table() -> None:
+    html = fixture("prereq.html")
+    assert parsers.parse_prerequisites(html, "IE 303") == ["MA 105 OR IE 201"]
+    # one rule per program group: both rows are kept, equivalent-type rows are not prerequisites
+    assert parsers.parse_prerequisites(html, "ie603") == ["IE 303", "IE 303 OR IE 304"]
+    assert parsers.parse_prerequisites(html, "IE 624") == []
+    assert parsers.parse_prerequisites(html, "IE 650") == []
+    assert parsers.parse_prerequisites(html, "ZZ 999") == []
+
+
+def test_syllabus_page_is_only_a_department_picker() -> None:
+    html = fixture("newall_course.html")
+    assert "openIt(" in html and "allCourse.jsp" in html  # no syllabus text, a POST form
+    assert not pages.path_allowed("POST", "/academic/CourseRegistration/Common/allCourse.jsp")
+    assert not pages.path_allowed("GET", "/academic/CourseRegistration/Common/allCourse.jsp")
+
+
+def test_academic_standing_in_a_mis_nested_cell() -> None:
+    assert (
+        parsers.parse_academic_record(fixture("academic_record.html")).profile.academic_standing
+        == "1"
+    )
+    # the value is not paired with its label: the first non-empty cell after the label is used
+    odd = "<table><tr><th>Academic Standing (<a>rules</a>)</th><td></td><td> 2 </td></tr></table>"
+    assert parsers.parse_academic_record(odd).profile.academic_standing == "2"
+    assert parsers.parse_academic_record("<table></table>").profile.academic_standing == ""
 
 
 def test_fee_status_skips_bank_details() -> None:

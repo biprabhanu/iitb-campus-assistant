@@ -276,9 +276,11 @@ _SPECS = [
     ),
     ToolSpec(
         "asc_fee_status",
-        "The student's fee status and amounts due from ASC (read-only; never pays anything).",
+        "Scholarship month view (ASC). ASC's 'Fees Status/Scholarship' page is only a month and "
+        "year picker for scholarship payments: there is no fee table, so this tool usually "
+        "returns no rows and fee dues must be checked on ASC itself (read-only; never pays).",
         AscFeeStatusInput,
-        "Checking your ASC fee status",
+        "Checking the ASC scholarship month view",
         "asc",
         _asc("asc_fee_status"),
         to_cards=cd.from_asc_fees,

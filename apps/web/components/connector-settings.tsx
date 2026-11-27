@@ -34,7 +34,7 @@ const META: Record<ConnectorName, Meta> = {
   asc: {
     title: "ASC",
     icon: GraduationCap,
-    blurb: "Read-only. Shows your timetable, courses, registration, profile and fee status. Grades are never read. Nothing is registered or changed for you.",
+    blurb: "Read-only. Shows your timetable, courses, registration, profile and scholarship month view. Grades are never read. Nothing is registered or changed for you.",
     campusOnly: true,
   },
   gcal: {

@@ -476,7 +476,24 @@ def parse_academic_record(html: str) -> AcademicRecord:
             )
         if courses:
             semesters.append(Semester(sem_name, courses, grade_cells_empty, sem_order))
-    return AcademicRecord(profile or AscProfile(), semesters)
+    profile = profile or AscProfile()
+    if not profile.academic_standing:
+        profile = profile.model_copy(update={"academic_standing": _standing_fallback(html)})
+    return AcademicRecord(profile, semesters)
+
+
+def _standing_fallback(html: str) -> str:
+    """Live layout: the 'Academic Standing (rules)' value sits in a mis-nested cell (a stray
+    `<td/>` inside the value cell), so it may not pair up with its label. Take the first
+    non-empty cell after the label cell instead."""
+    for label in soup(html).find_all(["th", "td"]):
+        if "academic standing" not in _text(label).casefold() or label.find(["th", "td"]):
+            continue
+        for cell in label.find_all_next(["td", "th"], limit=3):
+            text = _text(cell)
+            if text and "standing" not in text.casefold():
+                return text[:40]
+    return ""
 
 
 # ---------------------------------------------------------------- registration status
@@ -626,7 +643,14 @@ def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
     return best[1] if best else []
 
 
-# --- crsedetail.jsp / newallCourse.jsp / Prereq: needs_human_review (layouts not mapped) ---
+# --- crsedetail.jsp / Prereq (layouts recorded live 27 Nov 2026) ---
+# crsedetail.jsp: a 2-column Fields/Content table (Course Name, Total Credits, Type, Lecture,
+# Tutorial, Practical, Selfstudy, Half Semester, Text Reference, Description, Last Update). The
+# Prerequisite row is commented out in the page, and there is no department field.
+# newallCourse.jsp is only a department picker (it POSTs to allCourse.jsp, which is not
+# allowed), so the syllabus text is the Description row of crsedetail.jsp.
+# Prereq: one 10-column table (Course Code, Name, Credit, Type, Courses, Departments,
+# Programs, Instructor Consent, Remark, Qualifying discipline).
 
 
 def parse_label_values(html: str) -> dict[str, str]:
@@ -644,7 +668,7 @@ def parse_label_values(html: str) -> dict[str, str]:
                     value = _text(cells[i + 1])
                     if label and value and len(label) <= 60 and not _CODE_FULL.match(label):
                         out.setdefault(label.casefold(), value)
-    for line in s.get_text("\n").split("\n"):
+    for line in [] if out else s.get_text("\n").split("\n"):
         m = re.match(r"^\s*([A-Za-z][A-Za-z /()\-]{2,50}?)\s*:\s*(\S.*)$", line)
         if m:
             out.setdefault(m[1].strip().casefold(), squash(m[2]))
@@ -673,11 +697,13 @@ def parse_course_detail(html: str, code: str) -> AscCourseDetail:
     credits = _floatish(take("credit"))
     department = take("department")
     prereq_text = take("prereq")
-    syllabus = take("syllabus", "course content", "contents")
+    syllabus = take("syllabus", "description", "course content", "contents")
     extra = {
         k: v[:300]
         for k, v in values.items()
-        if k not in used and not re.search(r"roll|name of student|cpi|spi|grade", k)
+        if k not in used
+        and k != "fields"
+        and not re.search(r"roll|name of student|cpi|spi|grade", k)
     }
     return AscCourseDetail(
         code=normalise_code(code),
@@ -691,30 +717,26 @@ def parse_course_detail(html: str, code: str) -> AscCourseDetail:
 
 
 def parse_prerequisites(html: str, code: str) -> list[str]:
-    """Prerequisite codes for `code` from a Prereq page: a table row starting with the code, or
-    a 'prerequisite' label: value pair."""
+    """Prerequisite rules for `code`, e.g. ["IE 611 OR EE 325"], from the live Prereq table.
+
+    Rows of type "prerequiste" (sic) only; "equivalent" rows are other rules. A course can have
+    several rows (one per program group), so distinct rules are collected."""
     target = normalise_code(code)
+    rules: list[str] = []
     for table in soup(html).find_all("table"):
         for row in _rows(table):
             texts = [_text(c) for c in _cells(row)]
-            if texts and normalise_code(texts[0]) == target:
-                codes = [normalise_code(c) for t in texts[1:] for c in CODE_RE.findall(t)]
-                return [c for c in dict.fromkeys(codes) if c != target]
+            if len(texts) < 5 or normalise_code(texts[0]) != target:
+                continue
+            if texts[3].casefold().startswith("equiv"):
+                continue
+            rule = squash(normalise_code_text(texts[4]))
+            if rule and rule not in rules:
+                rules.append(rule)
+    if rules:
+        return rules
     values = parse_label_values(html)
     return [normalise_code(c) for c in CODE_RE.findall(_pick(values, "prereq"))]
-
-
-def parse_syllabus(html: str, code: str) -> str:
-    """The syllabus text of `code` as far as a tolerant reading finds it (trimmed)."""
-    values = parse_label_values(html)
-    text = _pick(values, "syllabus", "course content", "contents")
-    if not text:
-        s = soup(html)
-        for tag in s(["script", "style"]):
-            tag.decompose()
-        body = squash(s.get_text(" "))
-        text = body if normalise_code(code) in normalise_code_text(body) else ""
-    return text[:3000]
 
 
 def normalise_code_text(text: str) -> str:

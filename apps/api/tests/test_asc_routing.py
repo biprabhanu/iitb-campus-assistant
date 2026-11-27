@@ -462,7 +462,8 @@ def test_sentence_fees() -> None:
         "ASC shows 1 fee entry; none is due."
     )
     assert personal_sentence("asc_fee_status", AscFeeStatusInput(), AscFeeStatusOutput()) == (
-        "ASC shows no fee entries."
+        "ASC shows only a scholarship-payment month picker here, not a fee table. "
+        "Check your fee dues on ASC itself."
     )
 
 

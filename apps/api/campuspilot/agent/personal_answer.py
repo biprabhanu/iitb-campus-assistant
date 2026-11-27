@@ -134,7 +134,10 @@ def _registration_sentence(out: Any) -> str:
 def _fee_sentence(out: Any) -> str:
     n = len(out.items)
     if n == 0:
-        return "ASC shows no fee entries."
+        return (
+            "ASC shows only a scholarship-payment month picker here, not a fee table. "
+            "Check your fee dues on ASC itself."
+        )
     due = sum(1 for i in out.items if i.status and any(w in i.status.lower() for w in _DUE_WORDS))
     entries = _plural(n, "fee entry", "fee entries")
     if due == 0:

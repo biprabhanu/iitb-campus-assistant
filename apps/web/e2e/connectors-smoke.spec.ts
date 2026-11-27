@@ -174,19 +174,14 @@ test("registration status with the window closed lists the registered courses", 
   await expect(page.getByRole("article").getByText("Checked your ASC registration")).toBeVisible();
 });
 
-test("fee status: a status chip with the word (paid is success, due is warning), amount and due date", async ({ page }) => {
+test("fee question: ASC only has a scholarship month picker, so the answer says so and shows no fee cards", async ({ page }) => {
   await page.goto("/");
   await ask(page, "What is my fee status?");
-  const fees = page.getByRole("region", { name: "Fee status" }).getByTestId("fee-card");
-  await expect(fees).toHaveCount(3, { timeout: 15_000 });
-  await expect(fees.nth(0)).toContainText("Tuition fee");
-  await expect(fees.nth(0).getByTestId("fee-status")).toHaveText("Paid");
-  await expect(fees.nth(0).getByTestId("fee-status")).toHaveClass(/text-success/);
-  await expect(fees.nth(1).getByTestId("fee-status")).toHaveText("Due");
-  await expect(fees.nth(1).getByTestId("fee-status")).toHaveClass(/text-warning/);
-  await expect(fees.nth(1)).toContainText("Rs 3,000");
-  await expect(fees.nth(1)).toContainText("Due 15 Dec 2026");
-  expect(new Set(await fees.getByTestId("source-label").allTextContents())).toEqual(new Set(["ASC"]));
+  const answer = page.getByRole("article");
+  await expect(answer).toContainText("scholarship-payment month picker", { timeout: 15_000 });
+  await expect(answer).toContainText("Check your fee dues on ASC itself");
+  await expect(answer.getByText("Checked the ASC scholarship month view")).toBeVisible();
+  await expect(page.getByTestId("fee-card")).toHaveCount(0);
 });
 
 test("profile card shows department, program, status, validity, standing and advisors", async ({ page }) => {
@@ -277,18 +272,18 @@ test("with a cloud model, a question about your own ASC data gets the local-mode
 
 test("mail and ASC cards are never written to localStorage; after a reload the chat says so", async ({ page }) => {
   await page.goto("/");
-  await ask(page, "What is my fee status?");
-  await expect(page.getByTestId("fee-card")).toHaveCount(3, { timeout: 15_000 });
+  await ask(page, "What is my registration status?");
+  await expect(page.getByTestId("course-card")).toHaveCount(3, { timeout: 15_000 });
   await page.waitForTimeout(700); // the chat is saved shortly after each change
   const saved = await page.evaluate(() => localStorage.getItem("campuspilot.conversations.v1") ?? "");
-  expect(saved).toContain("ASC shows 3 fee items"); // the answer text is saved as before
-  expect(saved).not.toContain("Hostel rent"); // ... but no card content
-  expect(saved).not.toContain("Rs 3,000");
+  expect(saved).toContain("registration window is closed"); // the answer text is saved as before
+  expect(saved).not.toContain("Stochastic Processes"); // ... but no card content
+  expect(saved).not.toContain("Decision Models");
 
   await page.reload();
-  await page.getByRole("button", { name: /fee status/ }).first().click();
+  await page.getByRole("button", { name: /registration status/ }).first().click();
   await expect(page.getByRole("article")).toContainText("aren't kept in this browser");
-  await expect(page.getByTestId("fee-card")).toHaveCount(0);
+  await expect(page.getByTestId("course-card")).toHaveCount(0);
 });
 
 test("What's due: Moodle deadlines and mail deadline cards, each with its own source label", async ({ page }) => {
@@ -385,7 +380,7 @@ test("ASC card: new text, LDAP ID and LDAP password, connects straight away with
   await page.goto("/");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-asc");
-  await expect(card).toContainText("timetable, courses, registration, profile and fee status. Grades are never read.");
+  await expect(card).toContainText("timetable, courses, registration, profile and scholarship month view. Grades are never read.");
   await expect(card).not.toContainText("grades and"); // the old text listed grades as something it shows
   await card.getByRole("button", { name: "Connect ASC" }).click();
   await card.getByLabel("LDAP ID").fill("demo.student");
@@ -581,12 +576,12 @@ test("390 px: event cards, timetable and Settings -> Connectors do not overflow 
   await expect(page.getByTestId("slot-card")).toHaveCount(3, { timeout: 15_000 });
   expect(await noOverflow()).toBe(true);
 
-  // The new ASC cards: profile, fees, offering history, course details (syllabus open) and the long course list.
+  // The new ASC cards: profile, scholarship month view, offering history, course details (syllabus open) and the long course list.
   await ask(page, "Show my profile");
   await expect(page.getByTestId("profile-card")).toBeVisible({ timeout: 15_000 });
   expect(await noOverflow()).toBe(true);
   await ask(page, "What is my fee status?");
-  await expect(page.getByTestId("fee-card")).toHaveCount(3, { timeout: 15_000 });
+  await expect(page.getByRole("article").last()).toContainText("scholarship-payment month picker", { timeout: 15_000 });
   expect(await noOverflow()).toBe(true);
   await ask(page, "When is IE 307 offered?");
   await expect(page.getByTestId("history-card")).toBeVisible({ timeout: 15_000 });

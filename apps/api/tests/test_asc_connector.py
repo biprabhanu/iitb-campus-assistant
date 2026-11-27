@@ -373,10 +373,11 @@ async def test_course_details(portal) -> None:
     saved_login()
     out = await asc_pkg.asc_course_details(AscCourseDetailsInput(course_code="IE 303"))
     assert out.detail and out.detail.title == "Fake Operations Research"
-    assert out.detail.prerequisites == ["MA 105", "IE 201"]
-    assert "linear programming" in out.detail.syllabus
+    assert out.detail.prerequisites == ["MA 105 OR IE 201"]
+    assert "linear programming" in out.detail.syllabus  # crsedetail's Description row
+    assert portal.count("newallCourse.jsp") == 0  # a department picker: never fetched
     missing = await asc_pkg.asc_course_details(AscCourseDetailsInput(course_code="ZZ 999"))
-    assert missing.detail is not None or missing.note  # syllabus page may still answer
+    assert missing.detail is None and missing.note
 
 
 # ---------- demo mode and status ----------
