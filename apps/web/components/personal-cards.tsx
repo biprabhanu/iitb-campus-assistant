@@ -1,25 +1,29 @@
 "use client";
-// Cards for the v2 connectors (the `cards` SSE event): events and mail from Webmail, and the timetable,
-// courses and grades from ASC. They sit under the answer text like the Moodle deadline cards, and every
-// card wears a source label. Grades are hidden until the student asks to see them.
+// Cards for the v2 connectors (the `cards` SSE event): events and mail from Webmail, and from ASC the
+// timetable, courses, profile, fee status, offering history and course details (CONTRACT section 11.8).
+// They sit under the answer text like the Moodle deadline cards, and every card wears a source label.
+// Grades are never read, so there is no grades card.
 import { useEffect, useId, useRef, useState } from "react";
 import {
-  Award,
+  BookOpen,
   CalendarCheck,
   CalendarClock,
   CalendarPlus,
+  Check,
+  ChevronDown,
   ExternalLink,
-  Eye,
-  EyeOff,
   FlaskConical,
   GraduationCap,
+  History,
   Info,
   Loader2,
   Mail,
   MapPin,
+  Minus,
   Paperclip,
   RotateCw,
   UserRound,
+  Wallet,
 } from "lucide-react";
 import { useAppActions } from "@/components/app-actions";
 import { SourceLabel } from "@/components/source-label";
@@ -29,7 +33,11 @@ import { cn, courseColorIndex, dayHeadingFromKey, hhmmTo12h, istDateTime, istEve
 import type {
   AscCourse,
   AscCourseCard,
-  AscGradeCard,
+  AscDetailCard,
+  AscFeeCard,
+  AscHistoryCard,
+  AscProfileCard,
+  AscSemesterName,
   AscSlotCard,
   AscWeekday,
   Card,
@@ -317,7 +325,7 @@ function MailCardView({ card }: { card: MailCard }) {
   );
 }
 
-// ---------- ASC: timetable, courses, grades ----------
+// ---------- ASC: timetable, courses, profile, fees, history, course details ----------
 
 const WEEKDAYS: AscWeekday[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_NAME: Record<AscWeekday, string> = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" };
@@ -338,6 +346,11 @@ function SlotRow({ card }: { card: AscSlotCard }) {
           <SourceLabel label={card.source_label} className="ml-auto" />
         </div>
         <p className="mt-1.5 text-[15px] font-medium leading-snug">{s.course_title || s.course_code}</p>
+        {s.instructor && (
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <UserRound className="h-3 w-3 shrink-0" aria-hidden /> <span className="min-w-0 truncate">{s.instructor}</span>
+          </p>
+        )}
         {(s.venue || s.slot) && (
           <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             {s.venue && (
@@ -397,7 +410,9 @@ const STATUS_TONE: Record<AscCourse["status"], string> = {
 
 function CourseRow({ card }: { card: AscCourseCard }) {
   const c = card.course;
-  const bits = [c.credits != null ? `${c.credits} ${c.credits === 1 ? "credit" : "credits"}` : null, c.slot ? `Slot ${c.slot}` : null, c.instructor].filter(Boolean);
+  const main = [c.credits != null ? `${c.credits} ${c.credits === 1 ? "credit" : "credits"}` : null, c.slot ? `Slot ${c.slot}` : null, c.instructor].filter(Boolean);
+  // The extra fields ASC gives for some views: shown small, only when present.
+  const extra = [c.tag ? `Tag ${c.tag}` : null, c.credit_audit, c.course_type, c.venue, c.division ? `Division ${c.division}` : null].filter(Boolean);
   return (
     <li data-testid="course-card" className={CARD}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -406,65 +421,265 @@ function CourseRow({ card }: { card: AscCourseCard }) {
         <SourceLabel label={card.source_label} className="ml-auto" />
       </div>
       <p className="mt-1.5 text-[15px] font-medium leading-snug">{c.title || c.code}</p>
-      {bits.length > 0 && <p className="mt-0.5 text-xs text-muted-foreground">{bits.join(" · ")}</p>}
+      {main.length > 0 && <p className="mt-0.5 break-words text-xs text-muted-foreground">{main.join(" · ")}</p>}
+      {extra.length > 0 && <p className="mt-0.5 break-words text-xs text-muted-foreground">{extra.join(" · ")}</p>}
     </li>
   );
 }
 
-/** Grades are sensitive: the real values are not even in the page until the student presses "Show grades". */
-function Grades({ cards }: { cards: AscGradeCard[] }) {
-  const [shown, setShown] = useState(false);
+/** A long list (running courses can be 50+) shows the first rows and a "Show all N" toggle. */
+const COURSES_SHOWN = 10;
+
+function Courses({ cards }: { cards: AscCourseCard[] }) {
+  const [all, setAll] = useState(false);
   const listId = useId();
+  const long = cards.length > COURSES_SHOWN;
+  const shown = long && !all ? cards.slice(0, COURSES_SHOWN) : cards;
   return (
-    <section aria-label="Grades" className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className={cn(HEADING, "mb-0")}>
-          <Award className="h-3.5 w-3.5" aria-hidden /> Grades
-        </h3>
-        <Button size="sm" variant="outline" aria-controls={listId} onClick={() => setShown((s) => !s)}>
-          {shown ? <EyeOff className="h-3.5 w-3.5" aria-hidden /> : <Eye className="h-3.5 w-3.5" aria-hidden />}
-          {shown ? "Hide grades" : "Show grades"}
+    <section aria-label="Courses">
+      <h3 className={HEADING}>
+        <GraduationCap className="h-3.5 w-3.5" aria-hidden /> Courses
+        {long && <span className="font-normal normal-case tracking-normal">· {cards.length}</span>}
+      </h3>
+      <ul id={listId} className="grid gap-2 sm:grid-cols-2">
+        {shown.map((c) => (
+          <CourseRow key={c.id} card={c} />
+        ))}
+      </ul>
+      {long && (
+        <Button size="sm" variant="outline" className="mt-2.5" aria-expanded={all} aria-controls={listId} onClick={() => setAll((v) => !v)}>
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", all && "rotate-180")} aria-hidden />
+          {all ? "Show fewer" : `Show all ${cards.length}`}
         </Button>
-      </div>
-      <ul id={listId} className="space-y-2">
-        {cards.map((c) => (
-          <li key={c.id} data-testid="grade-card" className={cn(CARD, "flex items-center gap-3")}>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <CourseChip code={c.grade.course_code} />
-                {c.grade.semester && <span className="text-xs text-muted-foreground">{c.grade.semester}</span>}
-                <SourceLabel label={c.source_label} className="ml-auto" />
+      )}
+    </section>
+  );
+}
+
+function ProfileView({ card }: { card: AscProfileCard }) {
+  const p = card.profile;
+  const rows: [string, string][] = [
+    ["Department", p.department],
+    ["Program", p.program],
+    ["Status", p.status],
+    ["Validity", p.validity],
+    ["Academic standing", p.academic_standing],
+    ["Advisors", p.advisors.join(", ")],
+  ];
+  return (
+    <section aria-label="Profile">
+      <h3 className={HEADING}>
+        <UserRound className="h-3.5 w-3.5" aria-hidden /> Profile
+      </h3>
+      <div data-testid="profile-card" className={CARD}>
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-[15px] font-medium leading-snug">{p.program || p.department || "Your ASC profile"}</p>
+          <SourceLabel label={card.source_label} />
+        </div>
+        <dl className="mt-2 grid gap-x-4 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
+          {rows
+            .filter(([, v]) => v)
+            .map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="min-w-0 break-words font-medium">{v}</dd>
               </div>
-              <p className="mt-1.5 text-[15px] font-medium leading-snug">{c.grade.course_title || c.grade.course_code}</p>
-              {c.grade.credits != null && <p className="mt-0.5 text-xs text-muted-foreground">{c.grade.credits} {c.grade.credits === 1 ? "credit" : "credits"}</p>}
+            ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+/** Paid is green, due is amber; any other word ASC uses stays neutral. The word is always shown, never just a colour. */
+function feeTone(status?: string | null): string {
+  const s = (status ?? "").toLowerCase();
+  if (/\b(paid|received|cleared|nil|completed)\b/.test(s)) return "bg-success-soft text-success";
+  if (/\b(due|unpaid|pending|overdue|outstanding)\b/.test(s)) return "bg-warning-soft text-warning";
+  return "bg-muted text-foreground";
+}
+
+function FeeStatus({ cards }: { cards: AscFeeCard[] }) {
+  return (
+    <section aria-label="Fee status">
+      <h3 className={HEADING}>
+        <Wallet className="h-3.5 w-3.5" aria-hidden /> Fee status
+      </h3>
+      <ul className="space-y-2">
+        {cards.map((c) => (
+          <li key={c.id} data-testid="fee-card" className={CARD}>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="min-w-0 flex-1 text-[15px] font-medium leading-snug">{c.fee.label}</p>
+              {c.fee.status && (
+                <span data-testid="fee-status" className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", feeTone(c.fee.status))}>
+                  {c.fee.status}
+                </span>
+              )}
+              <SourceLabel label={c.source_label} />
             </div>
-            {shown ? (
-              <span data-testid="grade-value" className="min-w-11 rounded-lg bg-accent-soft px-3 py-1.5 text-center text-base font-semibold text-accent-text">
-                {c.grade.grade}
-              </span>
-            ) : (
-              <span role="img" aria-label="Grade hidden" className="min-w-11 select-none rounded-lg bg-muted px-3 py-1.5 text-center text-base font-semibold tracking-widest text-muted-foreground">
-                ••
-              </span>
+            {(c.fee.amount || c.fee.due_date) && (
+              <p className="mt-1 break-words text-xs text-muted-foreground">
+                {c.fee.amount && <span className="font-medium text-foreground/90">{c.fee.amount}</span>}
+                {c.fee.amount && c.fee.due_date && <span aria-hidden> · </span>}
+                {c.fee.due_date && <>Due {c.fee.due_date}</>}
+              </p>
             )}
           </li>
         ))}
       </ul>
-      {!shown && <p className="text-xs text-muted-foreground">Grades stay hidden until you ask. They come straight from ASC and are never sent to the AI model.</p>}
+    </section>
+  );
+}
+
+const SEMESTER_LABEL: Record<AscSemesterName, string> = { autumn: "Autumn", spring: "Spring", summer: "Summer", winter: "Winter" };
+const SEMESTER_ORDER: AscSemesterName[] = ["autumn", "spring", "summer", "winter"];
+
+/** 2026 -> "2026-27". */
+const academicYear = (y: number) => `${y}-${String((y + 1) % 100).padStart(2, "0")}`;
+
+/** A small year x semester grid. "Offered" and "Not offered" are words (with an icon), not only a colour. */
+function HistoryView({ card }: { card: AscHistoryCard }) {
+  const years = [...new Set(card.offerings.map((o) => o.year))].sort((a, b) => b - a);
+  // Autumn and Spring always; Summer and Winter only when ASC has a row for them.
+  const sems = SEMESTER_ORDER.filter((s) => s === "autumn" || s === "spring" || card.offerings.some((o) => o.semester === s));
+  const cell = (year: number, sem: AscSemesterName) => card.offerings.find((o) => o.year === year && o.semester === sem);
+  return (
+    <section aria-label="Offering history">
+      <h3 className={HEADING}>
+        <History className="h-3.5 w-3.5" aria-hidden /> When it runs
+      </h3>
+      <div data-testid="history-card" className={CARD}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <CourseChip code={card.course_code} />
+          <SourceLabel label={card.source_label} className="ml-auto" />
+        </div>
+        {card.title && <p className="mt-1.5 text-[15px] font-medium leading-snug">{card.title}</p>}
+        {years.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No offerings found on ASC.</p>
+        ) : (
+          <div className="mt-2.5 overflow-x-auto">
+            <table className="w-full min-w-[15rem] border-separate border-spacing-y-1 text-sm">
+              <caption className="sr-only">Years in which {card.course_code} was offered, by semester</caption>
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th scope="col" className="pr-3 font-medium">Year</th>
+                  {sems.map((s) => (
+                    <th key={s} scope="col" className="px-1 font-medium">{SEMESTER_LABEL[s]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((y) => (
+                  <tr key={y}>
+                    <th scope="row" className="pr-3 text-left font-medium tabular-nums">{academicYear(y)}</th>
+                    {sems.map((s) => {
+                      const o = cell(y, s);
+                      return (
+                        <td key={s} className="px-1">
+                          {o ? (
+                            <span
+                              data-testid={o.offered ? "offered" : "not-offered"}
+                              className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium", o.offered ? "bg-success-soft text-success" : "bg-muted text-muted-foreground")}
+                            >
+                              {o.offered ? <Check className="h-3 w-3" aria-hidden /> : <Minus className="h-3 w-3" aria-hidden />}
+                              {o.offered ? "Offered" : "Not offered"}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              <span aria-hidden>·</span>
+                              <span className="sr-only">Not checked</span>
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DetailView({ card }: { card: AscDetailCard }) {
+  const d = card.detail;
+  const [open, setOpen] = useState(false);
+  const syllabusId = useId();
+  const extra = Object.entries(d.extra ?? {}).filter(([, v]) => v);
+  const meta = [d.credits != null ? `${d.credits} ${d.credits === 1 ? "credit" : "credits"}` : null, d.department || null].filter(Boolean);
+  return (
+    <section aria-label="Course details">
+      <h3 className={HEADING}>
+        <BookOpen className="h-3.5 w-3.5" aria-hidden /> Course details
+      </h3>
+      <div data-testid="detail-card" className={CARD}>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <CourseChip code={d.code} />
+          <SourceLabel label={card.source_label} className="ml-auto" />
+        </div>
+        <p className="mt-1.5 text-[15px] font-medium leading-snug">{d.title || d.code}</p>
+        {meta.length > 0 && <p className="mt-0.5 text-xs text-muted-foreground">{meta.join(" · ")}</p>}
+
+        <div className="mt-2.5">
+          <h4 className="text-xs font-medium text-muted-foreground">Prerequisites</h4>
+          {d.prerequisites.length > 0 ? (
+            <ul className="mt-1 flex flex-wrap gap-1.5">
+              {d.prerequisites.map((p) => (
+                <li key={p} data-testid="prereq">
+                  <CourseChip code={p} />
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-0.5 text-sm">None listed</p>
+          )}
+        </div>
+
+        {extra.length > 0 && (
+          <dl className="mt-2.5 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+            {extra.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="min-w-0 break-words">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+
+        {d.syllabus && (
+          <div className="mt-3 border-t pt-3">
+            <Button size="sm" variant="outline" aria-expanded={open} aria-controls={syllabusId} onClick={() => setOpen((v) => !v)}>
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} aria-hidden />
+              {open ? "Hide syllabus" : "Show syllabus"}
+            </Button>
+            {open && (
+              <p id={syllabusId} data-testid="syllabus" className="mt-2.5 whitespace-pre-line break-words text-sm leading-relaxed text-foreground/90">
+                {d.syllabus}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </section>
   );
 }
 
 // ---------- the whole group ----------
 
-/** Everything the `cards` event carried, in a fixed order: events, mail, timetable, courses, grades. */
+/** Everything the `cards` event carried, in a fixed order: events, mail, profile, timetable, courses, fees, history, details. */
 export function PersonalCards({ cards }: { cards: Card[] }) {
   if (cards.length === 0) return null;
   const events = cards.filter((c): c is EventCard => c.type === "event");
   const mails = cards.filter((c): c is MailCard => c.type === "mail");
   const slots = cards.filter((c): c is AscSlotCard => c.type === "asc_slot");
   const courses = cards.filter((c): c is AscCourseCard => c.type === "asc_course");
-  const grades = cards.filter((c): c is AscGradeCard => c.type === "asc_grade");
+  const profiles = cards.filter((c): c is AscProfileCard => c.type === "asc_profile");
+  const fees = cards.filter((c): c is AscFeeCard => c.type === "asc_fee");
+  const histories = cards.filter((c): c is AscHistoryCard => c.type === "asc_history");
+  const details = cards.filter((c): c is AscDetailCard => c.type === "asc_detail");
 
   return (
     <div className="animate-fade-up space-y-4" data-testid="personal-cards">
@@ -493,20 +708,18 @@ export function PersonalCards({ cards }: { cards: Card[] }) {
           </ul>
         </section>
       )}
+      {profiles.map((c) => (
+        <ProfileView key={c.id} card={c} />
+      ))}
       {slots.length > 0 && <Timetable cards={slots} />}
-      {courses.length > 0 && (
-        <section aria-label="Registered courses">
-          <h3 className={HEADING}>
-            <GraduationCap className="h-3.5 w-3.5" aria-hidden /> Courses
-          </h3>
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {courses.map((c) => (
-              <CourseRow key={c.id} card={c} />
-            ))}
-          </ul>
-        </section>
-      )}
-      {grades.length > 0 && <Grades cards={grades} />}
+      {courses.length > 0 && <Courses cards={courses} />}
+      {fees.length > 0 && <FeeStatus cards={fees} />}
+      {histories.map((c) => (
+        <HistoryView key={c.id} card={c} />
+      ))}
+      {details.map((c) => (
+        <DetailView key={c.id} card={c} />
+      ))}
     </div>
   );
 }

@@ -84,19 +84,33 @@ for (const size of SIZES) {
         await shot(page, "timetable", size.width, theme);
       });
 
-      test("grades-hidden", async ({ page }) => {
+      test("profile", async ({ page }) => {
         await open(page);
-        await ask(page, "What are my grades?");
+        await ask(page, "Show my profile");
         await toTop(page);
-        await shot(page, "grades-hidden", size.width, theme);
+        await shot(page, "profile", size.width, theme);
       });
 
-      test("grades-shown", async ({ page }) => {
+      test("fees", async ({ page }) => {
         await open(page);
-        await ask(page, "What are my grades?");
-        await page.getByRole("button", { name: "Show grades" }).click();
+        await ask(page, "What is my fee status?");
         await toTop(page);
-        await shot(page, "grades-shown", size.width, theme);
+        await shot(page, "fees", size.width, theme);
+      });
+
+      test("history", async ({ page }) => {
+        await open(page);
+        await ask(page, "When is IE 307 offered?");
+        await toTop(page);
+        await shot(page, "history", size.width, theme);
+      });
+
+      test("course-detail", async ({ page }) => {
+        await open(page);
+        await ask(page, "What are the prerequisites of IE 307?");
+        await page.getByRole("button", { name: "Show syllabus" }).click();
+        await toTop(page);
+        await shot(page, "course-detail", size.width, theme);
       });
 
       test("courses", async ({ page }) => {
@@ -135,18 +149,15 @@ for (const size of SIZES) {
         await shot(page, "settings-connectors", size.width, theme);
       });
 
-      test("settings-otp", async ({ page }) => {
-        await open(page);
+      // ASC connected: the Refresh ASC data button, "Updated ..." and the local-model note.
+      test("settings-asc-refresh", async ({ page }) => {
+        await open(page, "?mockConnectors=connected");
         const dialog = await openSettings(page);
         const card = dialog.getByTestId("connector-asc");
-        await card.getByRole("button", { name: "Connect ASC" }).click();
-        await card.getByLabel("IITB LDAP username").fill("demo.student");
-        await card.getByLabel("LDAP password").fill("fake-password");
-        await card.getByRole("button", { name: "Connect", exact: true }).click();
-        await expect(card.getByLabel("One-time code")).toBeVisible();
+        await expect(card.getByRole("button", { name: "Refresh ASC data" })).toBeVisible();
         await card.scrollIntoViewIfNeeded();
         await page.waitForTimeout(300);
-        await shot(page, "settings-otp", size.width, theme);
+        await shot(page, "settings-asc-refresh", size.width, theme);
       });
 
       // The Webmail form: LDAP ID plus an SSO access token (IITB mail does not take the LDAP password).

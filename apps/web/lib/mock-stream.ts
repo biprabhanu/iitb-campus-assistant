@@ -10,14 +10,17 @@
 //   ?mockCold=1     the server is "asleep" for about a minute (?mockCold=fail: it never wakes)
 //   ?mockHold=tool  freezes on the first step; ?mockHold=text freezes after a few words (screenshots)
 //   ?mockConnectors=none|connected|off|demo   starting state of the v2 connectors (lib/mock-connectors.ts)
+//   ?mockCloud=1    pretend the chat model is a cloud one: personal ASC questions get the "local model only" refusal
 //   ?mockNet=1      status, ping and connector calls use the real fetch, so tests can answer them with page.route
 //
 // v2 journeys (local mode): "Any institute events this week from my mail?", "What's my timetable tomorrow?",
-// "What's due this week?" (Moodle plus mail deadlines), and also "my registered courses", "my grades", "search my mail".
+// "What's due this week?" (Moodle plus mail deadlines), "search my mail", and the ASC ones: "my current courses",
+// "registration status", "fee status", "my profile", "offered IE courses autumn 2026", "when is IE 307 offered",
+// "prerequisites of IE 307".
 //
 // The answer text here is sample content only. It never states real policy facts, dates or rules;
 // the source cards use real registry URLs but generic snippets.
-import { mockCold, mockConnectors, mockError, mockHold, mockHosted, mockOffline, mockWake } from "./config";
+import { mockCloud, mockCold, mockConnectors, mockError, mockHold, mockHosted, mockOffline, mockWake } from "./config";
 import type { LlmCreds, MoodleCreds } from "./credentials";
 import { httpError } from "./errors";
 import { dueMailCards, PERSONAL_LABELS, personalScript } from "./mock-personal";
@@ -87,7 +90,7 @@ function scriptFor(message: string, hosted: boolean): Script {
   const m = message.toLowerCase();
 
   // v2 journeys (mail, ASC): local mode only, and only when the connectors are not switched off.
-  const personal = !hosted && mockConnectors() !== "off" ? personalScript(message) : null;
+  const personal = !hosted && mockConnectors() !== "off" ? personalScript(message, mockCloud()) : null;
   if (personal) {
     return { tools: personal.tools, sources: [], cards: personal.cards, text: personal.text, done: { citations: [], freshness: "unknown", answer_kind: "personal" } };
   }

@@ -215,6 +215,7 @@ export interface ConnectorStatus {
   message?: string | null; // friendly text for "error" / "needs_otp"
   challenge_id?: string | null; // set with state "needs_otp"
   demo?: boolean; // CONNECTORS_DEMO=true: fixture data
+  refreshed_at?: string | null; // ASC: when the personal snapshot was last read (ISO)
 }
 
 /** GET /v1/connectors */
@@ -280,13 +281,18 @@ export interface DetectedEvent {
 export type AscWeekday = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
 export interface AscCourse {
-  code: string;
+  code: string; // normalised, e.g. "IE 624"
   title: string;
   credits?: number | null;
   slot?: string | null;
   instructor?: string | null;
+  venue?: string | null;
+  tag?: string | null; // academic record "Tag"
+  credit_audit?: string | null; // "Credit" / "Audit"
+  course_type?: string | null; // running courses "Course Type"
+  division?: string | null;
   status: "registered" | "approved" | "pending" | "dropped" | "audit" | "other";
-  semester: string;
+  semester: string; // e.g. "2026-27 Autumn"
 }
 
 export interface AscTimetableSlot {
@@ -296,17 +302,45 @@ export interface AscTimetableSlot {
   start: string; // "HH:MM", Asia/Kolkata
   end: string;
   venue?: string | null;
+  instructor?: string | null;
   slot?: string | null;
   kind: "lecture" | "tutorial" | "lab" | "other";
 }
 
-/** Sensitive: the UI keeps grades hidden until the student asks to see them. */
-export interface AscGrade {
-  course_code: string;
-  course_title: string;
+/** AcademicRecord table 1, minus roll number and name. */
+export interface AscProfile {
+  department: string;
+  program: string;
+  status: string;
+  validity: string; // "Program/Semester validity"
+  academic_standing: string;
+  advisors: string[];
+}
+
+/** One row of the fee status table. Amounts are shown as ASC writes them. */
+export interface AscFeeItem {
+  label: string;
+  amount?: string | null;
+  due_date?: string | null;
+  status?: string | null; // e.g. "Paid", "Due"
+}
+
+export interface AscCourseDetail {
+  code: string;
+  title: string;
   credits?: number | null;
-  grade: string;
-  semester: string;
+  department: string;
+  prerequisites: string[];
+  syllabus: string; // trimmed text, at most 3000 characters
+  extra: Record<string, string>; // other label: value pairs shown on ASC
+}
+
+export type AscSemesterName = "autumn" | "spring" | "summer" | "winter";
+
+export interface AscOffering {
+  year: number; // start year of the academic year: 2026 = 2026-27
+  semester: AscSemesterName;
+  offered: boolean;
 }
 
 // The `cards` SSE event: a list of these, discriminated by `type`. Every card has an id (for keys only)
@@ -337,12 +371,29 @@ export interface AscCourseCard extends CardBase {
   source_label: "ASC";
   course: AscCourse;
 }
-export interface AscGradeCard extends CardBase {
-  type: "asc_grade";
+export interface AscProfileCard extends CardBase {
+  type: "asc_profile";
   source_label: "ASC";
-  grade: AscGrade;
+  profile: AscProfile;
 }
-export type Card = MailCard | EventCard | AscSlotCard | AscCourseCard | AscGradeCard;
+export interface AscFeeCard extends CardBase {
+  type: "asc_fee";
+  source_label: "ASC";
+  fee: AscFeeItem;
+}
+export interface AscHistoryCard extends CardBase {
+  type: "asc_history";
+  source_label: "ASC";
+  course_code: string;
+  title: string;
+  offerings: AscOffering[];
+}
+export interface AscDetailCard extends CardBase {
+  type: "asc_detail";
+  source_label: "ASC";
+  detail: AscCourseDetail;
+}
+export type Card = MailCard | EventCard | AscSlotCard | AscCourseCard | AscProfileCard | AscFeeCard | AscHistoryCard | AscDetailCard;
 
 /** POST /v1/calendar/events: sent when the student clicks "Add to Google Calendar". */
 export interface CalendarEventRequest {

@@ -1,14 +1,13 @@
 // Small wrappers for the non-chat endpoints (docs/CONTRACT.md §2 and §11).
 import { API_BASE, MOCK, mockNet } from "./config";
 import { authHeaders, type LlmCreds, type MoodleCreds } from "./credentials";
-import { mockAddEvent, mockGcalConnect, mockGetConnectors, mockLogin, mockLogout, mockOtp } from "./mock-connectors";
+import { mockAddEvent, mockGcalConnect, mockGetConnectors, mockLogin, mockLogout, mockRefreshAsc } from "./mock-connectors";
 import { mockCheckLlm, mockCheckMoodle, mockDeleteMoodle, mockPing, mockSendMoodle, mockStatus } from "./mock-stream";
 import type {
   CalendarEventRequest,
   CalendarEventResult,
   ConnectorLoginRequest,
   ConnectorName,
-  ConnectorOtpRequest,
   ConnectorsResponse,
   ConnectorStatus,
   GcalConnectStart,
@@ -188,16 +187,20 @@ export async function webmailLogout(): Promise<ApiResult<ConnectorStatus>> {
   return connectorCall<ConnectorStatus>("DELETE", "/v1/connectors/webmail");
 }
 
-/** POST /v1/connectors/asc/login. May answer state "needs_otp" with a challenge_id. */
+/** POST /v1/connectors/asc/login: the LDAP id and password. ASC has no one-time code. */
 export async function ascLogin(req: ConnectorLoginRequest): Promise<ApiResult<ConnectorStatus>> {
   if (inMockMode()) return mockLogin("asc", req);
   return connectorCall<ConnectorStatus>("POST", "/v1/connectors/asc/login", req);
 }
 
-/** POST /v1/connectors/asc/otp: the code the student typed for a pending login. */
-export async function ascOtp(req: ConnectorOtpRequest): Promise<ApiResult<ConnectorStatus>> {
-  if (inMockMode()) return mockOtp(req);
-  return connectorCall<ConnectorStatus>("POST", "/v1/connectors/asc/otp", req);
+/**
+ * POST /v1/connectors/asc/refresh: read the personal ASC pages again now (timetable, courses,
+ * registration, profile, fees). Answers the ASC ConnectorStatus with a new `refreshed_at`.
+ * The confirm header is added like on every other POST (CONFIRM).
+ */
+export async function refreshAsc(): Promise<ApiResult<ConnectorStatus>> {
+  if (inMockMode()) return mockRefreshAsc();
+  return connectorCall<ConnectorStatus>("POST", "/v1/connectors/asc/refresh");
 }
 
 export async function ascLogout(): Promise<ApiResult<ConnectorStatus>> {

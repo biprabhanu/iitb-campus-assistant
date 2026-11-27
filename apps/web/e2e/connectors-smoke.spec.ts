@@ -1,4 +1,4 @@
-// v2 connectors: answer cards (mail events, ASC timetable, grades) and Settings -> Connectors.
+// v2 connectors: answer cards (mail events and the ASC views) and Settings -> Connectors.
 // The chat stream is always the built-in mock. Most tests use the in-memory connector mock
 // (?mockConnectors=...). The ones that must see real requests add ?mockNet=1 and answer them with
 // page.route, so we can check the URL, the X-CampusPilot-Confirm header and the body.
@@ -37,6 +37,8 @@ async function fakeApi(page: Page, opts: { status?: object; connectors?: object 
 }
 
 async function ask(page: Page, text: string) {
+  // A follow-up question waits until the previous answer has finished streaming.
+  await expect(page.getByRole("button", { name: "Stop generating" })).toBeHidden({ timeout: 20_000 });
   await page.getByLabel("Message CampusPilot").fill(text);
   await page.getByRole("button", { name: "Send message" }).click();
 }
@@ -141,52 +143,152 @@ test("timetable: slots grouped under the day, each with course, venue and an ASC
   await expect(table.getByTestId("slot-card").first()).toContainText("IE 624");
   await expect(table.getByTestId("slot-card").first()).toContainText("9:30 AM");
   await expect(table.getByTestId("slot-card").first()).toContainText("LH 301");
+  await expect(table.getByTestId("slot-card").first()).toContainText("Prof. A. Sample"); // the instructor
   expect(await table.getByTestId("source-label").allTextContents()).toEqual(["ASC", "ASC", "ASC"]);
   await expect(page.getByRole("article")).toContainText("You have 3 classes tomorrow");
 });
 
-test("registered courses show code, title, credits, slot and a status chip", async ({ page }) => {
+test("current courses show code, title, credits, slot, instructor and the extra ASC fields", async ({ page }) => {
   await page.goto("/");
   await ask(page, "Which are my registered courses?");
-  const courses = page.getByRole("region", { name: "Registered courses" }).getByTestId("course-card");
+  const courses = page.getByRole("region", { name: "Courses" }).getByTestId("course-card");
   await expect(courses).toHaveCount(4, { timeout: 15_000 });
   await expect(courses.first()).toContainText("6 credits");
   await expect(courses.first()).toContainText("Slot 1");
+  await expect(courses.first()).toContainText("Prof. A. Sample");
+  await expect(courses.first()).toContainText("Tag DC");
+  await expect(courses.first()).toContainText("Credit");
+  await expect(courses.first()).toContainText("LH 301");
   await expect(courses.first()).toContainText("registered");
-  await expect(courses.last()).toContainText("pending");
+  await expect(courses.last()).toContainText("audit");
+  expect(new Set(await courses.getByTestId("source-label").allTextContents())).toEqual(new Set(["ASC"]));
+  // A short list has no "Show all" toggle.
+  await expect(page.getByRole("button", { name: /Show all/ })).toHaveCount(0);
 });
 
-test("grades stay hidden until Show grades is pressed, and can be hidden again", async ({ page }) => {
+test("registration status with the window closed lists the registered courses", async ({ page }) => {
   await page.goto("/");
-  await ask(page, "What are my grades?");
-  const grades = page.getByRole("region", { name: "Grades" });
-  await expect(grades.getByTestId("grade-card")).toHaveCount(3, { timeout: 15_000 });
-  // Hidden: the real values are not even in the page.
-  await expect(grades.getByTestId("grade-value")).toHaveCount(0);
-  await expect(page.getByText("AA", { exact: true })).toHaveCount(0);
-  await expect(grades.getByRole("img", { name: "Grade hidden" })).toHaveCount(3);
-
-  await grades.getByRole("button", { name: "Show grades" }).click();
-  await expect(grades.getByTestId("grade-value")).toHaveText(["AA", "AB", "AP"]);
-  await grades.getByRole("button", { name: "Hide grades" }).click();
-  await expect(grades.getByTestId("grade-value")).toHaveCount(0);
+  await ask(page, "What is my registration status?");
+  await expect(page.getByTestId("course-card")).toHaveCount(3, { timeout: 15_000 });
+  await expect(page.getByRole("article")).toContainText("registration window is closed");
+  await expect(page.getByRole("article").getByText("Checked your ASC registration")).toBeVisible();
 });
 
-test("grades and mail cards are never written to localStorage; after a reload the chat says so", async ({ page }) => {
+test("fee status: a status chip with the word (paid is success, due is warning), amount and due date", async ({ page }) => {
   await page.goto("/");
-  await ask(page, "What are my grades?");
-  await expect(page.getByTestId("grade-card")).toHaveCount(3, { timeout: 15_000 });
-  await page.getByRole("button", { name: "Show grades" }).click();
+  await ask(page, "What is my fee status?");
+  const fees = page.getByRole("region", { name: "Fee status" }).getByTestId("fee-card");
+  await expect(fees).toHaveCount(3, { timeout: 15_000 });
+  await expect(fees.nth(0)).toContainText("Tuition fee");
+  await expect(fees.nth(0).getByTestId("fee-status")).toHaveText("Paid");
+  await expect(fees.nth(0).getByTestId("fee-status")).toHaveClass(/text-success/);
+  await expect(fees.nth(1).getByTestId("fee-status")).toHaveText("Due");
+  await expect(fees.nth(1).getByTestId("fee-status")).toHaveClass(/text-warning/);
+  await expect(fees.nth(1)).toContainText("Rs 3,000");
+  await expect(fees.nth(1)).toContainText("Due 15 Dec 2026");
+  expect(new Set(await fees.getByTestId("source-label").allTextContents())).toEqual(new Set(["ASC"]));
+});
+
+test("profile card shows department, program, status, validity, standing and advisors", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "Show my profile");
+  const card = page.getByTestId("profile-card");
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText("Industrial Engineering and Operations Research");
+  await expect(card).toContainText("Master of Technology (sample)");
+  await expect(card).toContainText("Registered");
+  await expect(card).toContainText("2028-29 Spring");
+  await expect(card).toContainText("Good standing");
+  await expect(card).toContainText("Prof. A. Sample, Prof. B. Sample");
+  await expect(card.getByTestId("source-label")).toHaveText("ASC");
+});
+
+test("offered courses: 14 rows show the first 10 with Show all 14, which expands and collapses", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "Which IE courses are offered in autumn 2026?");
+  const courses = page.getByRole("region", { name: "Courses" }).getByTestId("course-card");
+  await expect(courses).toHaveCount(10, { timeout: 15_000 });
+  await expect(courses.first()).toContainText("Division 1"); // the extra fields: course type, venue, division
+  await expect(courses.first()).toContainText("Core");
+  const toggle = page.getByRole("button", { name: "Show all 14" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(courses).toHaveCount(14);
+  await expect(page.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "Show fewer" }).click();
+  await expect(courses).toHaveCount(10);
+});
+
+test("offering history: a year x semester grid that says Offered / Not offered in words", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "When is IE 307 offered?");
+  const card = page.getByTestId("history-card");
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText("IE 307");
+  await expect(card.getByRole("columnheader", { name: "Autumn" })).toBeVisible();
+  await expect(card.getByRole("columnheader", { name: "Spring" })).toBeVisible();
+  await expect(card.getByRole("rowheader")).toHaveText(["2026-27", "2025-26", "2024-25", "2023-24"]);
+  await expect(card.getByTestId("offered")).toHaveCount(4);
+  await expect(card.getByTestId("not-offered")).toHaveCount(4);
+  await expect(card.getByTestId("offered").first()).toHaveText("Offered");
+  await expect(card.getByTestId("not-offered").first()).toHaveText("Not offered");
+  await expect(card.getByTestId("source-label")).toHaveText("ASC");
+});
+
+test("course details: prerequisites as chips, syllabus folded until Show syllabus", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "What are the prerequisites of IE 307?");
+  const card = page.getByTestId("detail-card");
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText("IE 307");
+  await expect(card).toContainText("6 credits");
+  await expect(card.getByTestId("prereq")).toHaveText(["MA 106", "IE 201"]);
+  await expect(card.getByTestId("source-label")).toHaveText("ASC");
+  await expect(card.getByTestId("syllabus")).toHaveCount(0);
+  const toggle = card.getByRole("button", { name: "Show syllabus" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(card.getByTestId("syllabus")).toContainText("Pollaczek-Khinchine");
+  await card.getByRole("button", { name: "Hide syllabus" }).click();
+  await expect(card.getByTestId("syllabus")).toHaveCount(0);
+});
+
+test("grades are never read: no grades card and no Show grades button for any ASC question", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "Which are my registered courses?");
+  await expect(page.getByTestId("course-card")).toHaveCount(4, { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /grades/i })).toHaveCount(0);
+  await expect(page.getByTestId("grade-card")).toHaveCount(0);
+});
+
+test("with a cloud model, a question about your own ASC data gets the local-model-only refusal and no cards", async ({ page }) => {
+  await page.goto("/?mockCloud=1");
+  await ask(page, "What's my timetable tomorrow?");
+  await expect(page.getByRole("article")).toContainText(
+    "That needs your ASC data, which CampusPilot only shares with the local model. Switch to Local Gemma in Settings.",
+    { timeout: 15_000 },
+  );
+  await expect(page.getByTestId("slot-card")).toHaveCount(0);
+  await expect(page.getByTestId("personal-cards")).toHaveCount(0);
+  // Public ASC questions still work with a cloud model.
+  await ask(page, "When is IE 307 offered?");
+  await expect(page.getByTestId("history-card")).toBeVisible({ timeout: 15_000 });
+});
+
+test("mail and ASC cards are never written to localStorage; after a reload the chat says so", async ({ page }) => {
+  await page.goto("/");
+  await ask(page, "What is my fee status?");
+  await expect(page.getByTestId("fee-card")).toHaveCount(3, { timeout: 15_000 });
   await page.waitForTimeout(700); // the chat is saved shortly after each change
   const saved = await page.evaluate(() => localStorage.getItem("campuspilot.conversations.v1") ?? "");
-  expect(saved).toContain("I found grades for 3 courses"); // the answer text is saved as before
-  expect(saved).not.toContain("Optimization"); // ... but no card content
-  expect(saved).not.toContain('"grade":"AA"');
+  expect(saved).toContain("ASC shows 3 fee items"); // the answer text is saved as before
+  expect(saved).not.toContain("Hostel rent"); // ... but no card content
+  expect(saved).not.toContain("Rs 3,000");
 
   await page.reload();
-  await page.getByRole("button", { name: /What are my grades/ }).first().click();
+  await page.getByRole("button", { name: /fee status/ }).first().click();
   await expect(page.getByRole("article")).toContainText("aren't kept in this browser");
-  await expect(page.getByTestId("grade-card")).toHaveCount(0);
+  await expect(page.getByTestId("fee-card")).toHaveCount(0);
 });
 
 test("What's due: Moodle deadlines and mail deadline cards, each with its own source label", async ({ page }) => {
@@ -279,29 +381,89 @@ test("a wrong password shows a friendly error and the form stays", async ({ page
   await expect(card.getByLabel("SSO access token (Emails)")).toHaveValue(""); // cleared as soon as it was sent
 });
 
-test("ASC asks for a one-time code, rejects a wrong one, and connects with the right one", async ({ page }) => {
+test("ASC card: new text, LDAP ID and LDAP password, connects straight away with no one-time-code step", async ({ page }) => {
+  await page.goto("/");
+  const dialog = await openSettings(page);
+  const card = dialog.getByTestId("connector-asc");
+  await expect(card).toContainText("timetable, courses, registration, profile and fee status. Grades are never read.");
+  await expect(card).not.toContainText("grades and"); // the old text listed grades as something it shows
+  await card.getByRole("button", { name: "Connect ASC" }).click();
+  await card.getByLabel("LDAP ID").fill("demo.student");
+  await card.getByLabel("LDAP password").fill("fake-password-2");
+  await expect(card.getByLabel("LDAP password")).toHaveAttribute("type", "password");
+  await card.getByRole("button", { name: "Connect", exact: true }).click();
+
+  await expect(card).toContainText("Connected as demo.student");
+  await expect(card).not.toContainText("Needs code");
+  await expect(card.getByLabel("One-time code")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Submit code" })).toHaveCount(0);
+  await expect(card.getByRole("heading", { name: "ASC" })).toBeFocused();
+  await expect(card).toContainText("Your ASC data is only shared with the local model.");
+});
+
+test("ASC login with a wrong password shows a friendly error and no code step", async ({ page }) => {
   await page.goto("/");
   const dialog = await openSettings(page);
   const card = dialog.getByTestId("connector-asc");
   await card.getByRole("button", { name: "Connect ASC" }).click();
-  await card.getByLabel("IITB LDAP username").fill("demo.student");
-  await card.getByLabel("LDAP password").fill("fake-password-2");
+  await card.getByLabel("LDAP ID").fill("demo.student");
+  await card.getByLabel("LDAP password").fill("bad-password");
   await card.getByRole("button", { name: "Connect", exact: true }).click();
-
-  const otp = card.getByLabel("One-time code");
-  await expect(otp).toBeVisible();
-  await expect(otp).toBeFocused(); // focus moves to the new step
-  await expect(card).toContainText("Needs code");
-
-  await otp.fill("000000");
-  await card.getByRole("button", { name: "Submit code" }).click();
-  await expect(card.getByRole("alert")).toContainText("code didn't work");
-  await expect(otp).toBeVisible(); // can try again
-
-  await otp.fill("123456");
-  await card.getByRole("button", { name: "Submit code" }).click();
-  await expect(card).toContainText("Connected as demo.student");
+  await expect(card.getByRole("alert")).toContainText("not accepted");
   await expect(card.getByLabel("One-time code")).toHaveCount(0);
+});
+
+test("Refresh ASC data sends one confirmed POST, shows a busy state, then Updated just now", async ({ page }) => {
+  const posts: Request[] = [];
+  const twentyMinAgo = new Date(Date.now() - 20 * 60_000).toISOString();
+  await fakeApi(page, {
+    connectors: { webmail: status("webmail", "not_connected"), asc: status("asc", "connected", { account: "demo.student", refreshed_at: twentyMinAgo }), gcal: status("gcal", "not_connected") },
+  });
+  await page.route("**/v1/connectors/asc/refresh", async (r) => {
+    if (r.request().method() === "POST") {
+      posts.push(r.request());
+      await new Promise((res) => setTimeout(res, 400)); // long enough to see the busy state
+    }
+    return json(r, status("asc", "connected", { account: "demo.student", refreshed_at: new Date().toISOString() }));
+  });
+  await page.goto("/?mockNet=1");
+  const dialog = await openSettings(page);
+  const card = dialog.getByTestId("connector-asc");
+  await expect(card.getByTestId("asc-updated")).toHaveText("Updated 20 minutes ago");
+  await card.getByRole("button", { name: "Refresh ASC data" }).click();
+  await expect(card.getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+  await expect(card.getByTestId("asc-updated")).toHaveText("Updated just now");
+  await expect(card.getByRole("button", { name: "Refresh ASC data" })).toBeEnabled();
+
+  expect(posts).toHaveLength(1);
+  expect(new URL(posts[0].url()).pathname).toBe("/v1/connectors/asc/refresh");
+  expect(posts[0].headers()["x-campuspilot-confirm"]).toBe("yes");
+});
+
+test("Refresh ASC data: an error shows inline and the button works again", async ({ page }) => {
+  await fakeApi(page, {
+    connectors: { webmail: status("webmail", "not_connected"), asc: status("asc", "connected", { account: "demo.student" }), gcal: status("gcal", "not_connected") },
+  });
+  await page.route("**/v1/connectors/asc/refresh", (r) => json(r, { code: "UNREACHABLE", message: "ASC needs the campus network or IITB VPN." }, 503));
+  await page.goto("/?mockNet=1");
+  const dialog = await openSettings(page);
+  const card = dialog.getByTestId("connector-asc");
+  await expect(card.getByTestId("asc-updated")).toHaveCount(0); // no refreshed_at yet, so no "Updated" text
+  await card.getByRole("button", { name: "Refresh ASC data" }).click();
+  await expect(card.getByRole("alert")).toContainText("ASC needs the campus network or IITB VPN.");
+  await expect(card.getByRole("button", { name: "Refresh ASC data" })).toBeEnabled();
+});
+
+test("Refresh ASC data only appears on the ASC card, and only when connected", async ({ page }) => {
+  await page.goto("/"); // nothing connected
+  let dialog = await openSettings(page);
+  await expect(dialog.getByRole("button", { name: "Refresh ASC data" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.goto("/?mockConnectors=connected");
+  dialog = await openSettings(page);
+  await expect(dialog.getByTestId("connector-asc").getByRole("button", { name: "Refresh ASC data" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Refresh ASC data" })).toHaveCount(1);
+  await expect(dialog.getByTestId("connector-asc").getByTestId("asc-updated")).toHaveText("Updated 20 minutes ago");
 });
 
 test("Google Calendar connects through the sign-in tab flow and can be disconnected", async ({ page }) => {
@@ -417,6 +579,25 @@ test("390 px: event cards, timetable and Settings -> Connectors do not overflow 
 
   await ask(page, "What's my timetable tomorrow?");
   await expect(page.getByTestId("slot-card")).toHaveCount(3, { timeout: 15_000 });
+  expect(await noOverflow()).toBe(true);
+
+  // The new ASC cards: profile, fees, offering history, course details (syllabus open) and the long course list.
+  await ask(page, "Show my profile");
+  await expect(page.getByTestId("profile-card")).toBeVisible({ timeout: 15_000 });
+  expect(await noOverflow()).toBe(true);
+  await ask(page, "What is my fee status?");
+  await expect(page.getByTestId("fee-card")).toHaveCount(3, { timeout: 15_000 });
+  expect(await noOverflow()).toBe(true);
+  await ask(page, "When is IE 307 offered?");
+  await expect(page.getByTestId("history-card")).toBeVisible({ timeout: 15_000 });
+  expect(await noOverflow()).toBe(true);
+  await ask(page, "What are the prerequisites of IE 307?");
+  await page.getByRole("button", { name: "Show syllabus" }).click();
+  await expect(page.getByTestId("syllabus")).toBeVisible({ timeout: 15_000 });
+  expect(await noOverflow()).toBe(true);
+  await ask(page, "Which IE courses are offered in autumn 2026?");
+  await page.getByRole("button", { name: /Show all 14/ }).click();
+  await expect(page.getByTestId("course-card")).toHaveCount(14, { timeout: 15_000 });
   expect(await noOverflow()).toBe(true);
 
   // Settings is reached through the sidebar drawer on a phone.
