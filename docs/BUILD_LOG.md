@@ -96,3 +96,7 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Lead decision: `newallCourse.jsp` (syllabus) is on the allowlist because the owner listed it among the areas to read; the fee page name is taken from the menu label at login until it is mapped live, then pinned.
 - Lead decision: the personal snapshot is memory only (never on disk), because it holds fee amounts and advisor names.
 - Phase 0 contract: `docs/CONTRACT.md` §11.8, commit `9ca623f`. Phase 1: Worker A (asc package, fixtures, asc-check), Worker B (routing, sentences, mock, refresh endpoint), Worker C (UI) in parallel worktrees.
+- Live fix: ASC answers "Invalid Access" without a browser User-Agent and the menu.jsp Referer; menu leaves are <a> tags inside buildChild JS strings.
+- Owner decision: allow GET of /misec/scholarship/Intermediate.jsp and scholpaid.jsp (the fee leaf's redirects), read-only. The page is a scholarship month picker, so fee status shows no rows and says so.
+- Live Running Courses slot cells hold slot plus schedule; slot = first token, room from "Class Room : X".
+- Hosted Settings mirrors the local layout; Webmail, ASC and Google show as local-only with setup steps; hosted makes no /v1/connectors calls.
