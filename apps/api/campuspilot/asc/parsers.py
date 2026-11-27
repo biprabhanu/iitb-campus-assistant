@@ -161,6 +161,12 @@ def _js_unescape(value: str) -> str:
     return html_lib.unescape(value)
 
 
+_JS_ANCHOR = re.compile(
+    r"""<a\s[^>]*?href\s*=\s*(?:\\?['"])(?P<href>[^'"\\]*)(?:\\?['"])[^>]*>(?P<label>.*?)</a>""",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
 def parse_menu(html: str) -> list[MenuLink]:
     """Leaf links of the YUI TreeView: JS object literals `{label: "..", href: ".."}` (either
     key order, single or double quotes) and plain `<a href>` links."""
@@ -179,6 +185,16 @@ def parse_menu(html: str) -> list[MenuLink]:
         label, href = _LABEL_RE.search(chunk), _HREF_RE.search(chunk)
         if label and href:
             add(_js_unescape(label["val"]), _js_unescape(href["val"]))
+    # The live menu (27 Nov 2026) builds each leaf as an anchor inside a JS string:
+    #   buildChild(Node,"<a href='/academic/...?<token>' ...>My Timetable</a>",false)
+    # BeautifulSoup doesn't parse markup inside <script>, so read those anchors with a regex.
+    for m in _JS_ANCHOR.finditer(script_text):
+        href = _js_unescape(m["href"])
+        if not href.lower().startswith("javascript"):
+            add(
+                html_lib.unescape(re.sub(r"<[^>]+>", " ", _js_unescape(m["label"]))),
+                html_lib.unescape(href),
+            )
     for a in s.find_all("a", href=True):
         href = str(a["href"])
         if not href.lower().startswith("javascript"):

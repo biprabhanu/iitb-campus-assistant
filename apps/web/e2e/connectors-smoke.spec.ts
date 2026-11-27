@@ -532,7 +532,7 @@ test("login and disconnect requests carry the confirm header and nothing is kept
 
 // ---------- hosted mode ----------
 
-test("hosted mode: no Connectors section and no connector or calendar requests at all", async ({ page }) => {
+test("hosted mode: Connectors is a guide only, no connector or calendar requests", async ({ page }) => {
   const seen: string[] = [];
   page.on("request", (r) => {
     const p = new URL(r.url()).pathname;
@@ -546,9 +546,9 @@ test("hosted mode: no Connectors section and no connector or calendar requests a
   await page.goto("/?mockNet=1");
   await expect(page.getByTestId("provider-pill")).toBeVisible();
   const dialog = await openSettings(page);
-  await expect(dialog.getByRole("heading", { name: "1. Model key" })).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "Connectors" })).toHaveCount(0);
-  await expect(dialog.getByText("IITB Webmail")).toHaveCount(0);
+  await expect(dialog.getByRole("heading", { name: "AI key" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Connectors" })).toBeVisible();
+  await expect(dialog.getByTestId("hosted-connector-webmail")).toBeVisible();
   await page.waitForTimeout(500);
   expect(seen).toEqual([]);
 });

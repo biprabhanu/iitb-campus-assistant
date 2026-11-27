@@ -121,3 +121,21 @@ def test_fee_status_skips_bank_details() -> None:
     dump = json.dumps([i.model_dump() for i in items])
     for bad in ("9999000011112222", "FAKE0000001", "Test Student"):
         assert bad not in dump
+
+
+def test_menu_reads_anchors_inside_js_strings() -> None:
+    """The live menu (27 Nov 2026) builds leaves as <a> tags inside buildChild("...") strings."""
+    from campuspilot.asc.parsers import parse_menu
+
+    html = (
+        "<script>var N1 = buildChild(N0,\"<a id='1_2_3' href='/academic/timetable/"
+        "VenueOccupancy.jsp?FAKETOKEN1' title='Timetable view'"
+        " onclick='javascript:loadframe(1,2,3);'"
+        ' target=rightPage >My Timetable</a>",false);'
+        "var N2 = buildChild(N0,\"<a id='1_2_4' href='/academic/utility/allDept.jsp?FAKETOKEN2'"
+        ' target=rightPage >Running Courses</a>",false);</script>'
+        '<a href="index.jsp?logout=yes">Sign out</a>'
+    )
+    links = {link.label: link.href for link in parse_menu(html)}
+    assert links["My Timetable"].endswith("VenueOccupancy.jsp?FAKETOKEN1")
+    assert links["Running Courses"].endswith("allDept.jsp?FAKETOKEN2")
