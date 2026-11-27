@@ -118,7 +118,7 @@ export function SettingsDialog({
     >
       <DialogContent
         title="Settings"
-        description={hosted ? "Your AI key and optional Moodle, kept in this browser." : "Connect Moodle, check the model and manage data kept in this browser."}
+        description={hosted ? "Your AI key, Moodle and how to connect more, kept in this browser." : "Connect Moodle, check the model and manage data kept in this browser."}
         className="max-w-xl"
         initialFocusId={
           hosted

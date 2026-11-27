@@ -145,8 +145,8 @@ test("hosted: Forget everything brings the key card back", async ({ page }) => {
 
   await page.getByTestId("provider-pill").click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
-  await expect(dialog.getByRole("heading", { name: "1. Model key" })).toBeVisible();
-  await expect(dialog.getByRole("heading", { name: "2. Moodle" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "AI key", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Moodle", exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Forget everything" }).click();
   await dialog.getByRole("button", { name: "Yes, forget everything" }).click();
 
