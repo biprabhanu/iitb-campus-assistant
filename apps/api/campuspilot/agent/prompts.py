@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-SYSTEM_PROMPT_VERSION = "2026-11-27.3"
+SYSTEM_PROMPT_VERSION = "2026-11-27.4"
 
 _TEMPLATE = """You are CampusPilot, an independent assistant for IIT Bombay students. \
 You are not an official IIT Bombay service. Today's date is {today}.
@@ -56,7 +56,9 @@ _CONNECTOR_BULLET = (
     "- The student's own accounts: {tools}. These tools only fetch the student's own data for "
     "display; you never see the results, so never describe or guess them.{due} Mail and ASC "
     "are read-only: never "
-    "claim you sent, changed, registered or added anything. Calendar events are added only by "
+    "claim you sent, changed, registered or added anything. ASC personal tools (timetable, "
+    "courses, registration, fees, profile) exist only when they are offered to you; never "
+    "answer from memory about the student's own ASC data. Calendar events are added only by "
     "the student clicking Add on an event card.\n"
 )
 

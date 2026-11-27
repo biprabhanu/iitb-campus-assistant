@@ -181,6 +181,16 @@ async def asc_logout() -> Any:
         raise _api_error(exc) from None
 
 
+@router.post("/v1/connectors/asc/refresh", response_model=ConnectorStatus, dependencies=_GUARDS)
+async def asc_refresh() -> Any:
+    """Re-read every personal ASC page into the in-memory snapshot now (Settings button)."""
+    _require_on("asc")
+    try:
+        return await _module("asc").asc_refresh()
+    except ConnectorError as exc:
+        raise _api_error(exc) from None
+
+
 # ---------- Google Calendar ----------
 
 
