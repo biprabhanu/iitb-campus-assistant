@@ -31,10 +31,11 @@ from campuspilot.schemas.connectors import (
     AscTimetableSlot,
 )
 
-_CODE = r"[A-Za-z]{2,4}\s?\d{3}[A-Za-z]?"
+_CODE = r"[A-Za-z]{2,4}\s?\d{3,4}[A-Za-z]?"
 CODE_RE = re.compile(rf"\b({_CODE})\b")
 _CODE_FULL = re.compile(rf"^{_CODE}$")
-_TIME_RE = re.compile(r"(\d{1,2})\s*:\s*(\d{2})\s*-\s*(\d{1,2})\s*:\s*(\d{2})")
+# ASC prints "09:30 10:25" (two lines, no dash) and drops ":00" ("14 15:25", "17:05 18").
+_TIME_RE = re.compile(r"^\s*(?=[^:]*:)(\d{1,2})(?::(\d{2}))?\s*(?:-\s*)?(\d{1,2})(?::(\d{2}))?\s*$")
 _DAY_RE = re.compile(r"^\s*\d*\s*\.?\s*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)", re.I)
 _TERM_RE = re.compile(r"autumn|spring|summer|winter", re.I)
 _YEARS_RE = re.compile(r"(\d{4})\s*[-/]\s*(\d{2,4})")
@@ -49,9 +50,14 @@ def squash(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
+def strip_variant(raw: str) -> str:
+    """'IE 603 (S1)' -> 'IE 603': ASC adds a section/division tag in brackets after some codes."""
+    return re.sub(r"\s*\([^)]*\)\s*$", "", raw or "").strip()
+
+
 def normalise_code(raw: str) -> str:
     """'ie624' / 'IE  624' -> 'IE 624'."""
-    m = re.match(r"^\s*([A-Za-z]{2,4})\s*(\d{3}[A-Za-z]?)\s*$", raw or "")
+    m = re.match(r"^\s*([A-Za-z]{2,4})\s*(\d{3,4}[A-Za-z]?)\s*$", raw or "")
     return f"{m[1].upper()} {m[2].upper()}" if m else squash(raw)
 
 
@@ -205,8 +211,8 @@ def parse_menu(html: str) -> list[MenuLink]:
 # ---------------------------------------------------------------- timetable
 
 
-def _hhmm(h: str, m: str) -> str:
-    return f"{int(h):02d}:{m}"
+def _hhmm(h: str, m: str | None) -> str:
+    return f"{int(h):02d}:{m or '00'}"
 
 
 _BRACKET = re.compile(r"^(?P<first>.*?)\s*-\s*(?P<vtype>[^:]*?)\s*:\s*(?P<venue>.*)$")
@@ -394,6 +400,8 @@ def _profile_from(table: Tag) -> AscProfile | None:
             label = squash(cells[i].get_text(" ")).rstrip(":").strip().casefold()
             for key, needle in _PROFILE_KEYS:
                 if needle in label:
+                    if key in found and key != "advisors":
+                        break  # "Program validity date" comes before "Semester validity date"
                     if key == "advisors":
                         found[key] = "\n".join(_lines(cells[i + 1]))
                     else:
@@ -412,6 +420,13 @@ def _profile_from(table: Tag) -> AscProfile | None:
     )
 
 
+def _merge_profile(a: AscProfile | None, b: AscProfile) -> AscProfile:
+    if a is None:
+        return b
+    merged = {k: getattr(a, k) or getattr(b, k) for k in AscProfile.model_fields}
+    return AscProfile(**merged)
+
+
 def parse_academic_record(html: str) -> AcademicRecord:
     """Profile (table 1, no roll/name) and one entry per semester table. Grades are dropped."""
     profile: AscProfile | None = None
@@ -422,11 +437,12 @@ def parse_academic_record(html: str) -> AcademicRecord:
             (r for r in rows if "course code" in [_text(c).casefold() for c in _cells(r)]), None
         )
         if header_row is None:
-            # SPI/CPI and performance tables have no "Course Code" header: not parsed at all.
-            if profile is None and any(
-                "department" in _text(c).casefold() for r in rows for c in _cells(r)[:1]
-            ):
-                profile = _profile_from(table)
+            # SPI/CPI and performance tables have no "Course Code" header: only the wanted
+            # profile labels are read from them, so no grade is ever looked at. The profile is
+            # spread over two tables (identity block, advisor row): merge, first value wins.
+            found = _profile_from(table)
+            if found is not None:
+                profile = _merge_profile(profile, found)
             continue
         idx = _header_index([_text(c) for c in _cells(header_row)])
         if "code" not in idx:
@@ -442,13 +458,14 @@ def parse_academic_record(html: str) -> AcademicRecord:
                 i = idx.get(key)
                 return texts[i] if i is not None and i < len(texts) else ""
 
-            if not _CODE_FULL.match(at("code")):
+            code_text = strip_variant(at("code"))
+            if not _CODE_FULL.match(code_text):
                 continue
             if at("grade"):  # emptiness only; the value itself is dropped here
                 grade_cells_empty = False
             courses.append(
                 AscCourse(
-                    code=normalise_code(at("code")),
+                    code=normalise_code(code_text),
                     title=at("name"),
                     credits=_floatish(at("credits")),
                     tag=at("tag") or None,
@@ -559,7 +576,10 @@ def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
             return None
 
         c_code, c_name = heads.index("course code"), col("course name")
-        c_type, c_inst, c_venue = col("course type"), col("instructor"), col("venue")
+        c_inst = col("instructor(s)")  # not the "Instructor Status" column before it
+        if c_inst is None:
+            c_inst = col("instructor")
+        c_type, c_venue = col("course type"), col("venue")
         c_slot, c_div, c_cred = col("slot"), col("division"), col("credit")
         found: list[RunningRow] = []
         for row in rows[header_i + 1 :]:
@@ -569,7 +589,7 @@ def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
             def at(i: int | None, texts: list[str] = texts) -> str:
                 return texts[i] if i is not None and i < len(texts) else ""
 
-            if not _CODE_FULL.match(at(c_code)):
+            if not _CODE_FULL.match(strip_variant(at(c_code))):
                 continue
             link = cells[c_code].find("a", href=True) or row.find(
                 "a", href=re.compile("crsedetail")
@@ -577,7 +597,7 @@ def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
             found.append(
                 RunningRow(
                     AscCourse(
-                        code=normalise_code(at(c_code)),
+                        code=normalise_code(strip_variant(at(c_code))),
                         title=at(c_name),
                         credits=_floatish(at(c_cred)) if c_cred is not None else None,
                         slot=at(c_slot) or None,

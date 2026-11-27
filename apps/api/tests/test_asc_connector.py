@@ -408,3 +408,19 @@ async def test_status_states(portal) -> None:
     with pytest.raises(ConnectorError):
         await asc_pkg.asc_refresh()
     assert (await asc_pkg.asc_status()).state == "error"
+
+
+async def test_requests_look_like_a_menu_click() -> None:
+    """ASC answers "Invalid Access" without a browser User-Agent and the menu page as Referer."""
+    seen: list[httpx.Headers] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers)
+        return httpx.Response(200, text="<html>ok</html>")
+
+    session = client.AscSession(transport=httpx.MockTransport(handle))
+    await session.get("/academic/timetable/VenueOccupancy.jsp?tok=1")
+    await session.aclose()
+    assert seen[0]["user-agent"].startswith("Mozilla/5.0")
+    assert "CampusPilot" not in seen[0]["user-agent"]
+    assert seen[0]["referer"] == "https://asc.iitb.ac.in/acadmenu/menu.jsp"

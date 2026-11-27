@@ -29,6 +29,12 @@ from campuspilot.connectors.errors import ConnectorError
 TRANSPORT: httpx.AsyncBaseTransport | None = None
 
 MAX_HOPS = 5
+# ASC answers "Attempt Logged! Invalid Access." to page requests that do not look like a menu
+# click in a browser: it needs a browser User-Agent and the menu page as Referer.
+BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
 MSG_UNREACHABLE = "ASC needs the campus network or IITB VPN."
 MSG_AUTH = "ASC rejected the LDAP id or password."
 MSG_EXPIRED = "ASC signed you out. Connect ASC again in Settings."
@@ -94,10 +100,11 @@ class AscSession:
             transport=transport or TRANSPORT,
             timeout=httpx.Timeout(self.settings.asc_timeout_s),
             follow_redirects=False,
-            headers={"User-Agent": "CampusPilot/0.2 (read-only student tool)"},
+            headers={"User-Agent": BROWSER_UA, "Accept": "text/html,*/*;q=0.8"},
         )
         self._lock = asyncio.Lock()
         self._last = 0.0
+        self._referer = f"{self.base}{pages.MENU_PATH}"
         self._links: dict[str, str] = {}  # menu key -> absolute URL with token (memory only)
         self.fee_pages: frozenset[str] = frozenset()
         self.signed_in = False
@@ -130,7 +137,9 @@ class AscSession:
                     await asyncio.sleep(wait)
                 token = _QUIET.set(True)
                 try:
-                    response = await self._client.request(method, url, data=data)
+                    response = await self._client.request(
+                        method, url, data=data, headers={"Referer": self._referer}
+                    )
                 except httpx.TimeoutException as exc:
                     if isinstance(exc, httpx.ConnectTimeout):
                         raise ConnectorError("unreachable", MSG_UNREACHABLE) from None

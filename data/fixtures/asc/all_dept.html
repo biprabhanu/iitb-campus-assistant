@@ -1,14 +1,22 @@
 <html><head><title>Running Courses</title></head>
 <body>
-<form method="post" action="allDept.jsp">
-  <select name="year"><option value="2026">2026-2027</option><option value="2025">2025-2026</option></select>
-  <select name="semester"><option value="1">1 - Autumn</option><option value="2">2 - Spring</option>
-  <option value="3">3 - Summer</option><option value="4">4 - winter</option></select>
-  <input type="submit" value="GO">
-</form>
-<table border="1">
-<tr><th>Prefix</th><th>Department</th><th>Courses</th></tr>
-<tr><td>IE, IES</td><td>Industrial Engineering</td><td><a href="RunningCourses.jsp?deptcd=IE,IES&amp;year=2026&amp;semester=1">12</a></td></tr>
-<tr><td>HS</td><td>Humanities</td><td><a href="RunningCourses.jsp?deptcd=HS&amp;year=2026&amp;semester=1">5</a></td></tr>
+<table class="table table-striped w-50 ">
+<TR><TD bgcolor="white" colspan="3">
+<form method="post" action="">
+Year <select name="year">
+<option value="2025">2025-2026</option>
+<option selected value="2026">2026-2027</option>
+</select>
+, Semester <select name="semester">
+<option selected value="1">1 - Autumn</option>
+<option value="2">2 - Spring</option>
+<option value="3">3 - Summer</option>
+<option value="4">4 - winter</option>
+</select>
+<input type="submit" name="submit" value="GO" />
+<br> (eg: academic year 2006 and semester 2 corresponds to spring semester 2007)
+</form></TD></TR>
+<TR><TD><A HREF="/academic/utility/RunningCourses.jsp?deptcd=IE,IES&year=2026&semester=1">IE,IES</A></TD></TR>
+<TR><TD><A HREF="/academic/utility/RunningCourses.jsp?deptcd=HS&year=2026&semester=1">HS</A></TD></TR>
 </table>
 </body></html>
