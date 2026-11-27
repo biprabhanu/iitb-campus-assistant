@@ -52,7 +52,7 @@ def test_academic_record_profile_and_current_semester() -> None:
     record = parsers.parse_academic_record(fixture("academic_record.html"))
     p = record.profile
     assert p.department.startswith("Industrial") and p.program == "M.Tech." and p.status
-    assert p.validity == "Semester 3 of 4" and p.advisors[0] == "Prof. Example Advisor"
+    assert p.validity == "2028-07-31" and p.advisors[0] == "Prof. Example Advisor"
     assert len(record.semesters) == 3
     current = record.current
     assert current and current.name == "2026-27 Autumn"
@@ -139,3 +139,20 @@ def test_menu_reads_anchors_inside_js_strings() -> None:
     links = {link.label: link.href for link in parse_menu(html)}
     assert links["My Timetable"].endswith("VenueOccupancy.jsp?FAKETOKEN1")
     assert links["Running Courses"].endswith("allDept.jsp?FAKETOKEN2")
+
+
+def test_real_layout_details() -> None:
+    """Quirks seen on the live pages (27 Nov 2026): times without ':00', section tags in codes,
+    4-digit codes, and an 'Instructor Status' column before 'Instructor(s)'."""
+    slots = parsers.parse_timetable(fixture("timetable.html"))
+    tue = [s for s in slots if s.day == "Tue" and s.course_code == "IE 624"]
+    assert (tue[0].start, tue[0].end) == ("14:00", "15:25")
+    assert [s for s in slots if s.course_code == "IE 699"][0].end == "16:55"
+    record = parsers.parse_academic_record(fixture("academic_record.html"))
+    assert record.current is not None
+    assert [c.code for c in record.current.courses] == ["IE 624", "IE 603", "HS 101"]
+    assert any(c.code == "DE 5001" for s in record.semesters for c in s.courses)
+    assert any(c.code == "IE 511" for s in record.semesters for c in s.courses)
+    p = record.profile  # identity block and advisor row are different tables
+    assert p.department and p.program == "M.Tech." and p.status == "Active" and p.advisors
+    assert parsers.strip_variant("IE 603 (S1)") == "IE 603"
