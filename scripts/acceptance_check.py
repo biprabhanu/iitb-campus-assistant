@@ -215,7 +215,9 @@ def print_report(rows: list[dict], totals: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--api", "--api-url", dest="api", default="http://127.0.0.1:8000", help="API base URL")
+    parser.add_argument(
+        "--api", "--api-url", dest="api", default="http://127.0.0.1:8000", help="API base URL"
+    )
     parser.add_argument("--limit", type=int, default=None, help="only the first N questions")
     args = parser.parse_args()
     api = args.api.rstrip("/")

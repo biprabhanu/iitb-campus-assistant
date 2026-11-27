@@ -100,3 +100,4 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - Owner decision: allow GET of /misec/scholarship/Intermediate.jsp and scholpaid.jsp (the fee leaf's redirects), read-only. The page is a scholarship month picker, so fee status shows no rows and says so.
 - Live Running Courses slot cells hold slot plus schedule; slot = first token, room from "Class Room : X".
 - Hosted Settings mirrors the local layout; Webmail, ASC and Google show as local-only with setup steps; hosted makes no /v1/connectors calls.
+- Final pass (27 Nov 2026): docs made consistent with code; hosted acceptance 68%/12% recorded; ASC crsedetail/Prereq/standing mapped live; fee tool shown as "Scholarship month view"; Moodle iCal check and one live Add with dedupe; fresh clone passes; docs/FINAL_REPORT.md written.

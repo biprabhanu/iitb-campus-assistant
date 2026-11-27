@@ -95,7 +95,7 @@ The hosted pilot is the Vercel UI plus the Render API above. To deploy your own 
 
 ## Tests
 
-TEST_COUNTS_TBD
+On 27 Nov 2026 `make test` passed with **581 pytest tests**, ruff, eslint, `tsc`, `next build` and **59 Playwright smoke tests**, offline. A fresh clone with no `.env` passes the same run.
 
 | Command | What it runs |
 |---|---|

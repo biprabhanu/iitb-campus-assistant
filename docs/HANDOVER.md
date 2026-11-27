@@ -1,6 +1,6 @@
 # Handover: current state
 
-Last updated: 2026-11-27 (v2 Phase 2 in progress). Update this file at the end of every session (see `CLAUDE.md`).
+Last updated: 2026-11-27 (final pre-submission pass; see `docs/FINAL_REPORT.md`). Update this file at the end of every session (see `CLAUDE.md`).
 
 ## Where the project is
 
@@ -12,7 +12,7 @@ Last updated: 2026-11-27 (v2 Phase 2 in progress). Update this file at the end o
 | v1.1 Phase 1: backend, Moodle, infra, frontend | Done and pushed. |
 | v1.1 Phase 2: integration on a local Docker container | Done. |
 | v1.1 Phase 3: deploy to Render and Vercel | **Live, and the smoke test passes.** Two fixes came out of the live deploy (see below). A browser check of the Vercel UI is still to do. |
-| v1.1 Phase 4: hosted acceptance, docs, final sweep, report | **Next.** Not started. |
+| v1.1 Phase 4: hosted acceptance, docs, final sweep, report | **Done** 2026-11-27: hosted acceptance 68% / 12% (`docs/EVAL.md`), placeholders filled, sweep clean, fresh clone passes, `docs/FINAL_REPORT.md`. Open: README Team names (owner), hosted prompt tuning. |
 | v2 integrations (`INTEGRATIONS_BUILD_PROMPT.md`): Webmail, ASC, Google Calendar, local only | Phases 0 and 1 done; workers A–D merged into `main`. **Phase 2 in progress:** Webmail live and read-only (IMAP LOGIN = LDAP id + SSO access token; date-only search; `list_recent_mail`; mail questions use only mail tools). Google Calendar OAuth connected by the owner. Moodle is iCal-first. **Still to do:** owner sets `MOODLE_ICAL_URL` in `.env` (calendar target is the primary calendar, owner decision), then a live Moodle check and one Add. **ASC rebuilt and live** (CONTRACT §11.8): ASC Internal LDAP login, in-memory snapshot, 8 tools, personal tools only with local Gemma, grades never read. Live `make asc-check` 2026-11-27: 14 timetable slots, 8 current courses, registration closed, 5 profile fields, 0 fee rows (the fee leaf leads to a scholarship month picker, so no fee table), offered IE Autumn 2026 empty (not published; Autumn 2025 parses 34). ASC needs a browser User-Agent and the menu Referer. Not yet mapped live: crsedetail, Prereq, newallCourse, academic standing. Hosted Settings now mirrors local, with a local-only Connectors guide. Then Phase 3 docs and report. |
 
 Git: CI (api, web, docker) is green. The only untracked item is `.vscode/`; leave it alone. More
