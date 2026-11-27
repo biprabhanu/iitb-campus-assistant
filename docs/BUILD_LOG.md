@@ -85,3 +85,14 @@ Short notes per phase: decisions, conflicts and anything a teammate should know.
 - iCal secrecy: errors name only the host. Found by the new test: with the full suite loaded, httpx still logged the full URL with `authtoken` (the WARNING level had been reset). Fix: a filter on the httpx/httpcore loggers that replaces every URL query with `?<hidden>`, plus the level.
 - Events tool with Gemma: the model now only gets the tool's remaining time budget (undated candidates first), and the rules' results are kept for the rest. Live: "What's due this week?" went from a mail-tool timeout to deadlines + 8 mail cards in 31 s.
 - Live Gemma check (27 Nov): latest/unread mail -> list_recent_mail cards, no sources; "email from gymkhana" -> search_my_mail; semester end -> cited answer; hostel change -> clarifying question. Google Calendar connected by the owner (OAuth). Moodle live and the test-calendar Add are not done: MOODLE_ICAL_URL and GCAL_CALENDAR_ID are not set yet.
+
+## v2 ASC rebuild (ASC Internal, 27 Nov 2026)
+
+- Owner: the first ASC rebuild attempt was stopped and reverted (never committed). New owner decisions replace it.
+- Owner decisions: login stays Settings → Connectors → ASC (LDAP id + password, Keychain only), flow and menu tokens per `ASC_CONNECTOR_PROMPT.md`; all personal ASC areas (timetable, current courses, registration, profile, fee status) go into one in-memory snapshot refreshed every 6 h or on demand; public course data (running courses, offering history, details, prerequisites, syllabus) cached on disk 24 h.
+- Owner: never read grades, SPI/CPI, the performance summary, bank details, Canara Bank letter, Pay Convo Fees, scholarship apply/update, Registration/Adjustment, Course Withdraw, Course Feedback, Alumni/Convo forms. The old `get_my_grades` tool and grade cards are removed.
+- Owner: personal ASC tools are offered only with the local model (`llm.mode` live or mock); with Groq or any cloud model only the public tools, and a personal question gets the fixed "only shares with the local model" reply.
+- Owner: Google Calendar target is the PRIMARY calendar; events still only on an "Add" click, deduped.
+- Lead decision: `newallCourse.jsp` (syllabus) is on the allowlist because the owner listed it among the areas to read; the fee page name is taken from the menu label at login until it is mapped live, then pinned.
+- Lead decision: the personal snapshot is memory only (never on disk), because it holds fee amounts and advisor names.
+- Phase 0 contract: `docs/CONTRACT.md` §11.8, commit `9ca623f`. Phase 1: Worker A (asc package, fixtures, asc-check), Worker B (routing, sentences, mock, refresh endpoint), Worker C (UI) in parallel worktrees.
