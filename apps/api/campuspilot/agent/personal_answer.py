@@ -81,9 +81,114 @@ def events_sentence(args: UpcomingEventsInput, out: UpcomingEventsOutput) -> str
     return text
 
 
-def asc_sentence(tool_name: str, args: Any, output: Any) -> str:
-    """Phase 0 placeholder (Worker B writes one sentence per ASC tool, CONTRACT §11.8)."""
-    return "Here is what ASC shows."
+_SEMESTER_WORD = {"autumn": "Autumn", "spring": "Spring", "summer": "Summer", "winter": "Winter"}
+_DAY_NAME = {
+    "Mon": "Monday",
+    "Tue": "Tuesday",
+    "Wed": "Wednesday",
+    "Thu": "Thursday",
+    "Fri": "Friday",
+    "Sat": "Saturday",
+    "Sun": "Sunday",
+}
+_DUE_WORDS = ("due", "pending", "unpaid", "not paid", "overdue", "outstanding")
+
+
+def _year_label(year: int) -> str:
+    return f"{year}-{(year + 1) % 100:02d}"
+
+
+def _join(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def _timetable_sentence(args: Any, out: Any) -> str:
+    n = len(out.slots)
+    if len(out.for_dates) == 1:
+        when = f"{args.day or 'on that day'} ({_day(out.for_dates[0])})"
+    elif args.day:
+        when = f"on {_DAY_NAME.get(args.day, args.day)}"
+    else:
+        when = "this week"
+    if n == 0:
+        return f"Your ASC timetable shows no classes {when}."
+    return f"You have {_plural(n, 'class', 'classes')} {when}."
+
+
+def _registration_sentence(out: Any) -> str:
+    semester = f" for {out.semester}" if out.semester else ""
+    n = len(out.courses)
+    if not out.window_open:
+        if n == 0:
+            return f"ASC shows no registered courses{semester}."
+        return f"ASC shows {_plural(n, 'registered course')}{semester}."
+    if n == 0:
+        return "Registration is open. ASC shows no courses on your registration yet."
+    counts: dict[str, int] = {}
+    for course in out.courses:
+        counts[course.status] = counts.get(course.status, 0) + 1
+    split = ", ".join(f"{k} {v}" for k, v in counts.items())
+    return f"Registration is open. ASC shows {_plural(n, 'course')}{semester}: {split}."
+
+
+def _fee_sentence(out: Any) -> str:
+    n = len(out.items)
+    if n == 0:
+        return "ASC shows no fee entries."
+    due = sum(1 for i in out.items if i.status and any(w in i.status.lower() for w in _DUE_WORDS))
+    entries = _plural(n, "fee entry", "fee entries")
+    if due == 0:
+        return f"ASC shows {entries}; none is due."
+    return f"ASC shows {entries}; {due} {'is' if due == 1 else 'are'} due."
+
+
+def _history_sentence(out: Any) -> str:
+    code = out.course_code
+    ran: dict[str, list[int]] = {}
+    never: list[str] = []
+    for sem in dict.fromkeys(o.semester for o in out.offerings):
+        years = sorted({o.year for o in out.offerings if o.semester == sem and o.offered})
+        if years:
+            ran[sem] = years
+        else:
+            never.append(_SEMESTER_WORD[sem])
+    if not ran:
+        return f"ASC shows no runs of {code} in the last 3 years."
+    parts = [f"{_SEMESTER_WORD[s]} {_join([_year_label(y) for y in ys])}" for s, ys in ran.items()]
+    text = f"{code} ran in {', and in '.join(parts)}"
+    if never:
+        text += f"; not in {' or '.join(never)}"
+    return text + "."
+
+
+def asc_sentence(tool_name: str, args: Any, out: Any) -> str:
+    """One template sentence per ASC tool (CONTRACT §11.8). No model writes it."""
+    if tool_name == "asc_my_timetable":
+        return _timetable_sentence(args, out)
+    if tool_name == "asc_my_current_courses":
+        n = len(out.courses)
+        where = f"for {out.semester}" if out.semester else "for this semester"
+        return (
+            f"ASC shows {_plural(n, 'course')} {where}." if n else "ASC shows no current courses."
+        )
+    if tool_name == "asc_registration_status":
+        return _registration_sentence(out)
+    if tool_name == "asc_fee_status":
+        return _fee_sentence(out)
+    if tool_name == "asc_profile":
+        return "Here is your ASC profile."
+    if tool_name == "asc_offered_courses":
+        where = f"{_SEMESTER_WORD[out.semester]} {_year_label(out.year)}"
+        if not out.courses:
+            return f"ASC lists no {out.dept.upper()} courses running in {where}."
+        count = _plural(len(out.courses), f"{out.dept.upper()} course")
+        return f"ASC lists {count} running in {where}."
+    if tool_name == "asc_course_offering_history":
+        return _history_sentence(out)
+    code = out.detail.code if out.detail else args.course_code.upper()
+    if out.detail is None:
+        return f"ASC has no details for {code}."
+    return f"Here are the ASC details for {code}."
 
 
 _DEMO = {

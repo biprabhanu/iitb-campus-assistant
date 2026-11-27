@@ -331,12 +331,14 @@ _SPECS = [
 TOOLS: dict[str, ToolSpec] = {spec.name: spec for spec in _SPECS}
 
 
-def offered_tools(settings: Settings | None = None) -> list[ToolSpec]:
+def offered_tools(settings: Settings | None = None, *, local_model: bool = True) -> list[ToolSpec]:
     """Tools the model may see.
 
     Moodle tools are always offered: the model only routes, and Moodle results never go back to
     it (CONTRACT §10.4). Mail and ASC tools are offered only when their connector is on, which
     is never in hosted mode (Settings.webmail_on / asc_on). Google Calendar has no tool at all.
+    `local_only` tools (the student's own ASC data) are hidden unless the chat model is local
+    (CONTRACT §11.8).
     """
     settings = settings or get_settings()
     hidden = set()
@@ -344,7 +346,11 @@ def offered_tools(settings: Settings | None = None) -> list[ToolSpec]:
         hidden.add("mail")
     if not settings.asc_on:
         hidden.add("asc")
-    return [spec for spec in TOOLS.values() if spec.kind not in hidden]
+    return [
+        spec
+        for spec in TOOLS.values()
+        if spec.kind not in hidden and (local_model or not spec.local_only)
+    ]
 
 
 def _strip_titles(node: Any) -> Any:

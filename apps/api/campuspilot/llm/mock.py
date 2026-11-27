@@ -10,6 +10,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
+from campuspilot.agent.asc_intent import asc_tool_call
 from campuspilot.agent.mail_intent import is_mail_question, mail_tool_call
 from campuspilot.llm.base import LLMReply, Message, ToolCall
 
@@ -52,6 +53,9 @@ def _route(text: str) -> list[ToolCall]:
                 },
             )
         ]
+    asc = None if is_mail_question(text) else asc_tool_call(text)
+    if asc:  # "amount due" is a fee question, not a Moodle deadline
+        return [ToolCall(*asc)]
     if re.search(r"\bdue\b|deadline", low):
         # The mail call is dropped by the orchestrator when Webmail is off (not offered).
         return [
@@ -76,7 +80,9 @@ def _route_connectors(low: str, text: str) -> list[ToolCall]:
     if is_mail_question(text):  # "check my webmail latest msg", "any mail from gymkhana"...
         name, args = mail_tool_call(text)
         return [ToolCall(name, args)]
-    # ASC routes: Worker B (CONTRACT §11.8).
+    asc = asc_tool_call(text)  # grades match nothing: no ASC tool reads them
+    if asc:
+        return [ToolCall(*asc)]
     return []
 
 

@@ -24,6 +24,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from campuspilot.agent.asc_intent import CLOUD_REPLY, asc_tool_call, is_asc_personal_question
 from campuspilot.agent.citations import CitationFilter
 from campuspilot.agent.clarify import needs_clarification
 from campuspilot.agent.mail_intent import is_mail_question, mail_tool_call
@@ -68,6 +69,7 @@ log = logging.getLogger("campuspilot.agent")
 
 Event = tuple[str, Any]
 FRESH_DAYS = 400
+LOCAL_MODES = frozenset({"live", "mock"})  # chat models that may see ASC personal tools
 OFFLINE_TEXT = (
     "The CampusPilot model is offline right now. Check the tunnel "
     "(`ssh -fN passpoli-llm`) and try again."
@@ -290,6 +292,13 @@ def _forced_mail(message: str) -> LLMReply:
     return LLMReply(tool_calls=[ToolCall(name, args)])
 
 
+def _forced_asc(message: str) -> LLMReply:
+    """A personal ASC question the model answered without an ASC tool: run the right one."""
+    found = asc_tool_call(message)
+    name, args = found if found else ("asc_profile", {})
+    return LLMReply(tool_calls=[ToolCall(name, args)])
+
+
 def _forced_search(message: str) -> LLMReply:
     """Gemma sometimes answers or abstains without looking anything up. We never let it
     finish an institutional question without a search, so the backend makes the call itself."""
@@ -368,14 +377,31 @@ async def _run(
         if hosted
         else None
     )
-    specs = offered_tools(settings)
+    # Privacy (CONTRACT §11.8): the student's own ASC data goes only to the local model
+    # (Ollama/Gemma or the offline mock). Cloud models (byok, fallback) never get those tools.
+    local_model = llm.mode in LOCAL_MODES
+    asc_personal = (
+        any(s.kind == "asc" and s.local_only for s in offered_tools(settings))
+        and not is_mail_question(request.message)
+        and is_asc_personal_question(request.message)
+    )
+    if asc_personal and not local_model:
+        async for event in _cloud_asc_reply(started):
+            yield event
+        return
+    specs = offered_tools(settings, local_model=local_model)
     # Owner rule (27 Nov 2026): with Webmail on, a question about the student's mail is answered
     # from the mail tools only, never from campus documents. If the mail tools fail, the student
     # is told so; nothing else answers instead.
     mail_turn = any(s.kind == "mail" for s in specs) and is_mail_question(request.message)
     if mail_turn:
         specs = [spec for spec in specs if spec.kind == "mail"]
-    precheck_on = settings.clarify_precheck and llm.mode != "mock" and not mail_turn
+    asc_turn = asc_personal and not mail_turn  # local model: ASC tools only, never campus docs
+    if asc_turn:
+        specs = [spec for spec in specs if spec.kind == "asc"]
+    precheck_on = (
+        settings.clarify_precheck and llm.mode != "mock" and not mail_turn and not asc_turn
+    )
     if precheck_on:
         # The pre-check owns the "ask or not" decision; offering ask_clarification to the
         # routing call as well made Gemma ask even when the student had named their cohort.
@@ -422,6 +448,8 @@ async def _run(
             reply = LLMReply(content=reply.content, tool_calls=offered_calls)
         if mail_turn and not reply.tool_calls and not trace.tools:
             reply = _forced_mail(request.message)
+        if asc_turn and not reply.tool_calls and not trace.tools:
+            reply = _forced_asc(request.message)
         # Only when NO tool has run yet: a Moodle-only or link-only turn is fine as it is.
         if (
             not reply.tool_calls
@@ -461,7 +489,7 @@ async def _run(
             trace.tools.append(spec.name)
             yield "tool", ToolEvent(name=spec.name, label=spec.label, state="start").model_dump()
             outcome = await _execute_tool(
-                spec, call.arguments, store, settings.tool_timeout_s, budget
+                spec, call.arguments, store, spec.timeout_s or settings.tool_timeout_s, budget
             )
             state = "done" if outcome.ok else "error"
             yield "tool", ToolEvent(name=spec.name, label=spec.label, state=state).model_dump()
@@ -587,6 +615,14 @@ async def _answer_pieces(
         return
     async for piece in llm.stream(messages):
         yield piece
+
+
+async def _cloud_asc_reply(started: float) -> AsyncIterator[Event]:
+    """A personal ASC question with a cloud model: fixed reply, no tool, no model call."""
+    for piece in chunk_text(CLOUD_REPLY):
+        yield "token", {"text": piece}
+    done = DoneEvent(answer_kind="personal", latency_ms=_ms(started))
+    yield "done", done.model_dump(mode="json")
 
 
 def _hide_moodle(turn: ChatTurn) -> ChatTurn:
