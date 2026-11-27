@@ -9,7 +9,7 @@ WEB_PORT ?= 3000
 
 .PHONY: help setup setup-api setup-web dev api web mock-dev test test-api test-web lint fmt \
         ingest ingest-dry reindex moodle-check acceptance screenshots e2e secrets-check tunnel-check \
-        lock docker-build docker-run smoke-hosted mail-login
+        lock docker-build docker-run smoke-hosted mail-login asc-check
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-15s %s\n",$$1,$$2}'
@@ -61,6 +61,9 @@ reindex: ## Rebuild chunks and the FTS5 index from saved raw files
 
 moodle-check: ## Live read-only check of your Moodle token / iCal URL
 	$(PY) scripts/moodle_check.py
+
+asc-check: ## Live read-only ASC check with your Keychain login (counts only; campus or VPN)
+	cd $(API_DIR) && .venv/bin/python ../../scripts/asc_check.py
 
 mail-login: ## Save your IITB webmail login in the macOS Keychain (prompts; never echoed)
 	$(PY) scripts/mail_login.py

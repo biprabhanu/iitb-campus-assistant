@@ -1,0 +1,38 @@
+<html><head><title>Menu</title>
+<script type="text/javascript">
+// Synthetic YUI TreeView menu. Tokens are fake. Mixed key order and quote styles on purpose.
+var tree = new YAHOO.widget.TreeView("treeDiv");
+var menuData = [
+ {label: "Academic", children: [
+  {label: "All About Courses", children: [
+    {label: "Running Courses", href: "/academic/utility/allDept.jsp?TOKEN_RUN_1"},
+    {href: '/academic/Bulletin?TOKEN_BULL_1', label: 'Bulletin Report'},
+    {"label": "Course Syllabus", "href": "/academic/CourseRegistration/Common/newallCourse.jsp?TOKEN_SYL_1"},
+    {label: "Curriculum", href: "/acadmenu/academic/getBulletin.jsp?TOKEN_CUR_1"}
+  ]},
+  {label: "Registration", children: [
+    {label: "Status", href: "/academic/CourseRegistration/Student/CRFFormInput.jsp?TOKEN_REGSTATUS_1"},
+    {label: "Registration/Adjustment", href: "/academic/CourseRegistration/Student/CRFForm.jsp?TOKEN_REGADJ_1"},
+    {label: "Course Withdraw", href: "/academic/CourseRegistration/Student/WithdrawForm.jsp?TOKEN_WD_1"}
+  ]},
+  {label: "Course Prerequisites", href: "/academic/Prereq?TOKEN_PRE_1"},
+  {label: "Academic/Personal Details", children: [
+    {label: "View", href: "/academic/utility/AcademicRecord.jsp?TOKEN_REC_1"}
+  ]},
+  {label: "TimeTable", children: [
+    {label: "My Timetable", href: "/academic/timetable/VenueOccupancy.jsp?TOKEN_TT_1"},
+    {label: "Department Timetable", href: "/academic/timetable/TTcheck.jsp?TOKEN_DTT_1"}
+  ]},
+  {label: "Fees", children: [
+    {label: "Fees Status/Scholarship", href: "/academic/fees/FeeStatus.jsp?TOKEN_FEE_1"},
+    {label: "Canara Bank Authorisation Letter", href: "/academic/fees/BankLetter.jsp?TOKEN_BANK_1"},
+    {label: "Pay Convo Fees", href: "/academic/fees/ConvoPay.jsp?TOKEN_CONVO_1"},
+    {label: "Course Feedback", href: "/academic/feedback/Feedback.jsp?TOKEN_FB_1"}
+  ]}
+ ]}
+];
+</script></head>
+<body>
+<div id="treeDiv"></div>
+<a href="index.jsp?logout=yes" target="_top">Sign out</a>
+</body></html>
