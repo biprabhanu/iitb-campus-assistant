@@ -315,14 +315,16 @@ async def sources() -> Any:
 
 def _no_keychain_when_hosted() -> None:
     if get_settings().hosted:
-        raise ApiError(404, "NOT_AVAILABLE", "Saving a Moodle token isn't available here.")
+        raise ApiError(404, "NOT_AVAILABLE", "Saving a Moodle calendar link isn't available here.")
 
 
 @router.post("/v1/moodle/token", response_model=MoodleTokenResponse)
 async def save_moodle_token(body: MoodleTokenRequest) -> Any:
     _no_keychain_when_hosted()
     if bool(body.token) == bool(body.ical_url):
-        raise ApiError(400, "BAD_REQUEST", "Send either a Moodle token or an iCal URL, not both.")
+        raise ApiError(
+            400, "BAD_REQUEST", "Send either a Moodle calendar link or a token, not both."
+        )
     module = _moodle()
     try:
         return await module.save_credentials(body)

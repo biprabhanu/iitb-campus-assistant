@@ -1,6 +1,6 @@
 # Handover: current state
 
-Last updated: 2026-11-27 (v2 Phase 1 in progress). Update this file at the end of every session (see `CLAUDE.md`).
+Last updated: 2026-11-27 (v2 Phase 2 in progress). Update this file at the end of every session (see `CLAUDE.md`).
 
 ## Where the project is
 
@@ -13,7 +13,7 @@ Last updated: 2026-11-27 (v2 Phase 1 in progress). Update this file at the end o
 | v1.1 Phase 2: integration on a local Docker container | Done. |
 | v1.1 Phase 3: deploy to Render and Vercel | **Live, and the smoke test passes.** Two fixes came out of the live deploy (see below). A browser check of the Vercel UI is still to do. |
 | v1.1 Phase 4: hosted acceptance, docs, final sweep, report | **Next.** Not started. |
-| v2 integrations (`INTEGRATIONS_BUILD_PROMPT.md`): Webmail, ASC, Google Calendar, local only | **Phase 0 done** (contract commit `947aa14`, `docs/CONTRACT.md` §11). **Phase 1 running:** 4 workers in git worktrees on branches `v2/webmail`, `v2/asc`, `v2/gcal`, `v2/web` (not pushed). Next: Phase 2 merges contract → A → B → C → D and runs the live test with the owner. Pushing to `main` needs the owner's OK (it redeploys Render and Vercel). |
+| v2 integrations (`INTEGRATIONS_BUILD_PROMPT.md`): Webmail, ASC, Google Calendar, local only | Phases 0 and 1 done; workers A–D merged into `main`. **Phase 2 in progress:** Webmail live and read-only (IMAP LOGIN = LDAP id + SSO access token; date-only search; `list_recent_mail`; mail questions use only mail tools). Google Calendar OAuth connected by the owner. Moodle is iCal-first. **Still to do:** owner sets `MOODLE_ICAL_URL` and `GCAL_CALENDAR_ID` ("CampusPilot test" calendar) in `.env`, then a live Moodle check and one Add to the test calendar; ASC live login via SSO; Phase 3 docs and report. |
 
 Git: CI (api, web, docker) is green. The only untracked item is `.vscode/`; leave it alone. More
 than one Claude session pushes to `main`, so `git fetch` before you assume your copy is current.

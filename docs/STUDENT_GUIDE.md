@@ -20,10 +20,11 @@ In Settings, each section has a **Remember on this device** switch.
 
 ## Connect Moodle (optional)
 
-Without Moodle, CampusPilot still answers questions about official pages. With it, you can ask about your deadlines and courses. Use one of these:
+Without Moodle, CampusPilot still answers questions about official pages. With it, you can ask about your deadlines.
 
-- In Moodle go to **Preferences** -> **Security keys** and copy the **Moodle mobile web service** key. Paste it in Settings.
-- Or go to **Calendar** -> **Export calendar** and copy the calendar URL. Paste it in Settings.
+In Moodle go to **Calendar** -> **Export calendar**, choose **All events** and **Recent and next 60 days**, then click **Get calendar URL**. Copy the link and paste it in Settings.
+
+The link contains a private key, so treat it like a password: don't share it or post it anywhere. If it ever leaks, export a new one in Moodle.
 
 If your Moodle cannot be reached from the hosted version, CampusPilot says so. The local app can still do it.
 
@@ -32,7 +33,7 @@ If your Moodle cannot be reached from the hosted version, CampusPilot says so. T
 | | Where it goes |
 |---|---|
 | Your AI key | Stays in your browser. It is sent with each request and used once. The server does not store it. |
-| Your Moodle key or calendar URL | Stays in your browser. It is sent only to reach IITB Moodle, and the server does not store it. |
+| Your Moodle calendar link | Stays in your browser. It is sent only to reach IITB Moodle, and the server does not store it. |
 | Your Moodle content (deadlines, courses) | Shown to you only. **It is never sent to the AI provider.** |
 | Your questions, and the excerpts of official pages used to answer | **Sent to the AI provider you chose** (for example Groq). Their privacy rules apply to that. |
 | Anything else | The server stores nothing about you. |

@@ -52,7 +52,11 @@ class Source:
 
 
 def resolve_source() -> Source:
-    """Local: Keychain token, env token, Keychain iCal, env iCal, demo, else not_configured.
+    """Local: Keychain iCal, env iCal, Keychain token, env token, demo, else not_configured.
+
+    The calendar link comes first: IITB Moodle has no "mobile web service" key for students
+    (owner, 27 Nov 2026), so iCal is the normal IITB route and a token is a fallback for other
+    Moodle sites.
 
     Hosted: this request's credentials only (never Keychain or env), else demo, else not_configured.
     """
@@ -67,19 +71,23 @@ def resolve_source() -> Source:
             return Source("demo")
         raise MoodleError(
             "not_configured",
-            "Moodle is not connected. Add a Moodle token or calendar-export URL in Settings.",
+            "Moodle is not connected. Paste your Moodle calendar link in Settings "
+            "(Moodle → Calendar → Export calendar → All events, Recent and next 60 days → "
+            "Get calendar URL).",
         )
-    token = credentials.get_keyring_token() or settings.moodle_token.get_secret_value()
-    if token:
-        return Source("rest", token)
     ical = credentials.get_keyring_ical_url() or settings.moodle_ical_url.get_secret_value()
     if ical:
         return Source("ical", ical)
+    token = credentials.get_keyring_token() or settings.moodle_token.get_secret_value()
+    if token:
+        return Source("rest", token)
     if settings.moodle_demo_when_unconfigured:
         return Source("demo")
     raise MoodleError(
         "not_configured",
-        "Moodle is not connected. Add a Moodle token or calendar-export URL in Settings.",
+        "Moodle is not connected. Paste your Moodle calendar link in Settings "
+        "(Moodle → Calendar → Export calendar → All events, Recent and next 60 days → "
+        "Get calendar URL).",
     )
 
 
@@ -277,7 +285,7 @@ async def save_credentials(req: MoodleTokenRequest) -> MoodleTokenResponse:
     """Verify first; store in the Keychain only if it works. Never echoes the secret."""
     if (req.token is None) == (req.ical_url is None):
         return MoodleTokenResponse(
-            ok=False, mode="none", message="Send either a token or a calendar URL."
+            ok=False, mode="none", message="Paste your Moodle calendar link."
         )
     try:
         if req.token is not None:

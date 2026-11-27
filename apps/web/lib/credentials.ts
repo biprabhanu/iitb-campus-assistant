@@ -81,15 +81,16 @@ export function validateModel(model: string): string | null {
   return null;
 }
 
-/** One box accepts a token or an iCal link. A link starts with https://. */
+/** One box for the Moodle calendar (iCal) link, the IITB route. A bare token is still accepted
+ *  quietly for other Moodle sites, but nothing in the UI asks for one. */
 export function parseMoodleInput(raw: string): { creds: MoodleCreds | null; error: string | null } {
   const v = raw.trim();
-  if (!v) return { creds: null, error: "Paste your Moodle token or calendar link first." };
+  if (!v) return { creds: null, error: "Paste your Moodle calendar link first." };
   if (/^https?:\/\//i.test(v)) {
     if (!ICAL_RE.test(v)) return { creds: null, error: `A calendar link must start with ${MOODLE_ICAL_PREFIX}` };
     return { creds: { icalUrl: v }, error: null };
   }
-  if (!MOODLE_TOKEN_RE.test(v)) return { creds: null, error: "That doesn't look like a Moodle token (8 to 128 letters and digits)." };
+  if (!MOODLE_TOKEN_RE.test(v)) return { creds: null, error: `That isn't a Moodle calendar link. It starts with ${MOODLE_ICAL_PREFIX}` };
   return { creds: { token: v }, error: null };
 }
 

@@ -12,7 +12,7 @@ Honest status words only: `implemented_and_tested`, `implemented_not_tested`, `b
 |---|---|---|
 | `make dev` starts API + UI on 127.0.0.1 | implemented_and_tested | both listen on 127.0.0.1 only (lsof) |
 | Academic calendar → streamed answer with validated citation cards | implemented_and_tested | live Gemma; see `docs/screenshots/live-answer-*.png` |
-| "What's due this week?" → Moodle deadline cards | implemented_and_tested (demo fixtures) | live Moodle token **not tested** (no token was provided) |
+| "What's due this week?" → Moodle deadline cards | implemented_and_tested (demo fixtures) | live Moodle calendar link **not tested** yet |
 | Unanswerable question → "couldn't verify" + office link | implemented_and_tested | live; `live-abstain-*.png` |
 | Ambiguous question → one clarifying question | implemented_and_tested | live, 6/6 stable runs |
 | Tunnel down → "Model offline", nothing crashes | implemented_and_tested | live with a closed port; unit tests |
@@ -44,7 +44,7 @@ covers them. Otherwise CampusPilot says it couldn't verify the answer and links 
 
 ## Prerequisites
 
-- macOS (the Moodle token is stored in the macOS Keychain; the Makefile targets are written for macOS).
+- macOS (the Moodle calendar link is stored in the macOS Keychain; the Makefile targets are written for macOS).
 - [uv](https://docs.astral.sh/uv/) (installs the Python 3.12 virtual environment for the API).
 - Node 20 or newer, with npm.
 - IITB network access (campus Wi-Fi or LAN, or the IITB VPN when off campus) for the model tunnel. The model server is only reachable from inside the campus network. You can skip this with `make mock-dev`.
@@ -117,12 +117,12 @@ This works on a fresh clone, with no tunnel and nothing ingested:
 
 You can connect Moodle in the app under **Settings**. The app never asks for your Moodle password.
 
-1. In Moodle, go to **Preferences → Security keys** and copy the key labelled **"Moodle mobile web service"**, if it is listed. IITB may not enable this for every account.
-2. Paste the key into **Settings → Moodle**. The app verifies it with Moodle and stores it in the macOS Keychain. The browser does not keep it, and the token is never shown again.
-3. If the web service key is not available, use the calendar fallback: in Moodle, go to **Calendar → Export calendar**, copy the URL, and paste it in the same Settings field. CampusPilot reads deadlines from that link. In this mode, course lists and contents are not available, and the UI says so.
-4. To remove the connection, click **Disconnect Moodle** in **Settings**. This deletes the token and calendar link from the Keychain.
+1. In Moodle, go to **Calendar → Export calendar**, choose **All events** and **Recent and next 60 days**, then click **Get calendar URL** and copy the link. (IITB Moodle has no "mobile web service" key for students, so the calendar link is the way in.)
+2. Paste the link into **Settings → Moodle**. The app checks it with Moodle and stores it in the macOS Keychain. The browser does not keep it, and it is never shown again.
+3. The link contains a private `authtoken`, so treat it like a password. The app never logs it, and its errors show only the host (`moodle.iitb.ac.in`). In this mode CampusPilot reads deadlines; course lists and contents are not available, and the UI says so.
+4. To remove the connection, click **Disconnect Moodle** in **Settings**. This deletes the link from the Keychain.
 
-You can also set `MOODLE_TOKEN` or `MOODLE_ICAL_URL` in `.env`. Settings is the recommended route because it keeps the value out of files. Check a token or calendar link from the command line with:
+You can also set `MOODLE_ICAL_URL` in the untracked `.env` (`MOODLE_TOKEN` exists only for other Moodle sites that offer a web service key). Settings is the recommended route because it keeps the value out of files. Check the link from the command line with:
 
 ```sh
 make moodle-check
@@ -154,7 +154,7 @@ With nothing connected, `MOODLE_DEMO_WHEN_UNCONFIGURED=true` (the default) shows
 
 - **Local only.** The API and web UI bind to `127.0.0.1`. Nothing is exposed on your network.
 - **Chat history stays in your browser.** The conversation is kept in the browser and is not stored on the server.
-- **Moodle token.** It is stored in the macOS Keychain, is never logged, and is never sent to the language model. Moodle data is not sent to a cloud model unless `ALLOW_PERSONAL_DATA_TO_CLOUD=true`.
+- **Moodle calendar link.** It is stored in the macOS Keychain, is never logged (errors show only the host), and is never sent to the language model. Moodle data is not sent to a cloud model unless `ALLOW_PERSONAL_DATA_TO_CLOUD=true`.
 - **Cloud fallback is off by default.** `LLM_FALLBACK_ENABLED=false` and `ALLOW_PERSONAL_DATA_TO_CLOUD=false` in `.env.example`. Turning on the fallback is a deliberate choice.
 - **Read-only tools.** The model can search the index, look up official links, and read Moodle. It cannot change anything.
 

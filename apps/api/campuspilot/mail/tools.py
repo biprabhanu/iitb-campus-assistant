@@ -6,6 +6,8 @@ model never sees their content (CONTRACT §11.4), and nothing is written anywher
 
 from __future__ import annotations
 
+import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 
 from campuspilot.config import Settings, get_settings
@@ -16,6 +18,7 @@ from campuspilot.mail import credentials, demo, imap_client
 from campuspilot.mail.events import IST, detect_event
 from campuspilot.mail.extract import refine_event
 from campuspilot.mail.imap_client import ScanResult, matches_query
+from campuspilot.mail.parsing import ParsedMail
 from campuspilot.mail.summary import summarise
 from campuspilot.schemas.connectors import (
     ConnectorLoginRequest,
@@ -36,6 +39,7 @@ MAX_MODEL_CALLS = 12  # at most this many mails go to the local model per questi
 # real inbox (27 Nov 2026, rules only): 26 of 31 "upcoming" items had no clear date, most from
 # mails a week or two old that were very likely about past events.
 UNCLEAR_MAIL_DAYS = 3
+REFINE_MARGIN_S = 4.0  # seconds of the tool's time budget kept back for reading mail
 MAX_UNCLEAR = 5
 
 NOTE_RULES_ONLY = "Found with simple rules; the local model is offline."
@@ -163,6 +167,35 @@ def _keep_recent_unclear(events: list[DetectedEvent], now: datetime) -> list[Det
     return dated + unclear[:MAX_UNCLEAR]  # `events` is sorted: newest unclear mail first
 
 
+async def _refine_within_budget(
+    llm: LLMClient | None, found: list[tuple[DetectedEvent, ParsedMail]], settings: Settings
+) -> tuple[list[DetectedEvent | None], bool]:
+    """Let the local model check event candidates, but only as long as the tool may run.
+
+    Measured live (27 Nov 2026): Gemma takes ~20 s per mail and runs one request at a time, so
+    12 mails took ~230 s and the whole tool timed out. Now the model gets what is left of the
+    tool's time budget, undated candidates first (where it helps most); every candidate it
+    doesn't reach keeps the rules' result. A slow model can no longer fail the question."""
+    if llm is None or not found:
+        return [event for event, _ in found], False
+    deadline = time.monotonic() + max(1.0, settings.tool_timeout_s - REFINE_MARGIN_S)
+    order = sorted(range(len(found)), key=lambda i: found[i][0].start is not None)
+    order = order[:MAX_MODEL_CALLS]
+    out: list[DetectedEvent | None] = [event for event, _ in found]
+    used = False
+    for i in order:
+        left = deadline - time.monotonic()
+        if left <= 0.5:
+            break
+        event, mail = found[i]
+        try:
+            out[i], was_used = await asyncio.wait_for(refine_event(llm, event, mail), left)
+        except TimeoutError:
+            break  # out of time: this one and the rest keep the rules' result
+        used = used or was_used
+    return out, used
+
+
 async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEventsOutput:
     settings = get_settings()
     result, is_demo = await _scan(settings, days=EVENT_SCAN_DAYS)
@@ -170,22 +203,11 @@ async def get_upcoming_institute_events(args: UpcomingEventsInput) -> UpcomingEv
     now = datetime.now(IST)
     until = now + timedelta(days=args.days)
 
-    events: list[DetectedEvent] = []
-    model_used = False
-    model_calls = 0
-    for mail in result.mails:
-        event = detect_event(mail)
-        if event is None:
-            continue
-        if llm is not None and model_calls < MAX_MODEL_CALLS:
-            model_calls += 1
-            refined, used = await refine_event(llm, event, mail)
-            model_used = model_used or used
-            event = refined
-        if event is None:
-            continue
-        if event.start is None or _in_window(event, now, until):
-            events.append(event)
+    found = [(event, mail) for mail in result.mails if (event := detect_event(mail)) is not None]
+    refined, model_used = await _refine_within_budget(llm, found, settings)
+    events = [
+        e for e in refined if e is not None and (e.start is None or _in_window(e, now, until))
+    ]
 
     if args.only_deadlines:
         events = [e for e in events if e.category == "deadline"]

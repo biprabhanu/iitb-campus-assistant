@@ -180,16 +180,16 @@ function MoodleSection({ creds }: { creds: Credentials }) {
 
   return (
     <section aria-labelledby="hs-moodle-h" className="space-y-4">
-      <SectionHeading id="hs-moodle-h" note="Optional. Paste your Moodle token or your calendar (iCal) export link to see your real deadlines. Without it you see demo data.">
+      <SectionHeading id="hs-moodle-h" note="Optional. Paste your Moodle calendar link (Moodle → Calendar → Export calendar → Get calendar URL) to see your real deadlines. Without it you see demo data. The link works like a password.">
         2. Moodle
       </SectionHeading>
       <SecretInput
         id="hs-moodle"
         noun="value"
-        label="Moodle token or iCal link"
+        label="Moodle calendar link"
         value={value}
         onChange={(v) => (setValue(v), setResult(null), setError(null))}
-        placeholder={`Token, or a link starting ${MOODLE_ICAL_PREFIX}`}
+        placeholder={`A link starting ${MOODLE_ICAL_PREFIX}`}
         invalid={!!error}
         describedBy={error ? "hs-moodle-error" : "hs-moodle-note"}
       />

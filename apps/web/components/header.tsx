@@ -142,7 +142,7 @@ function MoodleBadge({ state, onClick, hostedMoodle }: { state: StatusState; onC
       Icon = FlaskConical;
       label = "Moodle demo";
       short = "Demo";
-      tip = "Showing sample Moodle data, not yours. Add your Moodle token in Settings for real deadlines.";
+      tip = "Showing sample Moodle data, not yours. Add your Moodle calendar link in Settings for real deadlines.";
       cls = "text-warning";
     }
   } else if (status?.moodle_mode === "demo") {

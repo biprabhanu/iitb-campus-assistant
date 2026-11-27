@@ -141,10 +141,10 @@ export function SettingsDialog({
           <section aria-labelledby="moodle-h">
             <h3 id="moodle-h" className="text-sm font-semibold">Moodle</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Paste your Moodle token or your calendar (iCal) export link. CampusPilot only reads deadlines and courses.
+              Paste your Moodle calendar link. In Moodle: Calendar → Export calendar → All events, Recent and next 60 days → Get calendar URL. CampusPilot only reads your deadlines.
             </p>
             <form onSubmit={connect} className="mt-3 flex gap-2">
-              <label htmlFor="moodle-secret" className="sr-only">Moodle token or iCal URL</label>
+              <label htmlFor="moodle-secret" className="sr-only">Moodle calendar link</label>
               <input
                 id="moodle-secret"
                 type="password"
@@ -152,7 +152,7 @@ export function SettingsDialog({
                 spellCheck={false}
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
-                placeholder="Token or iCal URL"
+                placeholder="https://moodle.iitb.ac.in/calendar/export_execute.php?…"
                 className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
               />
               <Button type="submit" variant="primary" disabled={!secret.trim() || busy}>
@@ -161,7 +161,7 @@ export function SettingsDialog({
             </form>
             <p className="mt-2 flex items-start gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
-              Sent once to your local CampusPilot server, which keeps it in the Keychain. This browser never stores it.
+              The link works like a password. It is sent once to your local CampusPilot server, which keeps it in the Keychain. This browser never stores it.
             </p>
             {result && (
               <p role="status" className={cn("mt-3 rounded-lg px-3 py-2 text-sm", result.ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger")}>

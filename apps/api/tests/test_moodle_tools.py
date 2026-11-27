@@ -121,18 +121,46 @@ async def test_demo_course_contents_by_short_name_case_insensitive():
 
 
 def test_resolution_order(monkeypatch, memory_keyring):
+    """iCal first (the IITB route), then a token for other Moodle sites."""
     _use_env(monkeypatch, MOODLE_TOKEN="envtoken12345678", MOODLE_ICAL_URL=FAKE_ICAL_URL)
     keyring.set_password("campuspilot", "moodle_ical_url", FAKE_ICAL_URL + "&k=1")
-    assert resolve_source().secret == "envtoken12345678"  # env token beats keychain iCal
-    keyring.set_password("campuspilot", "moodle_token", "keychaintoken123")
-    assert resolve_source().secret == "keychaintoken123"  # keychain token wins
-    keyring.delete_password("campuspilot", "moodle_token")
-    monkeypatch.delenv("MOODLE_TOKEN")
-    get_settings.cache_clear()
-    assert resolve_source().secret.endswith("&k=1")  # keychain iCal before env iCal
+    assert resolve_source().secret.endswith("&k=1")  # keychain iCal first
     keyring.delete_password("campuspilot", "moodle_ical_url")
-    assert resolve_source().secret == FAKE_ICAL_URL
+    assert resolve_source().secret == FAKE_ICAL_URL  # then env iCal, even with a token set
     assert resolve_source().mode == "ical"
+    monkeypatch.delenv("MOODLE_ICAL_URL")
+    get_settings.cache_clear()
+    keyring.set_password("campuspilot", "moodle_token", "keychaintoken123")
+    assert resolve_source().secret == "keychaintoken123"  # token only without a link
+    keyring.delete_password("campuspilot", "moodle_token")
+    assert resolve_source().secret == "envtoken12345678"
+
+
+async def test_ical_errors_show_only_the_host_and_nothing_is_logged(monkeypatch, caplog):
+    import logging
+
+    import httpx
+    import respx
+
+    from campuspilot.moodle.errors import MoodleError
+    from campuspilot.moodle.ical import fetch_ics
+
+    secret = "authtoken=SECRETabc123"
+    url = f"https://moodle.iitb.ac.in/calendar/export_execute.php?userid=7&{secret}"
+    caplog.set_level(logging.DEBUG)
+    for response in (httpx.Response(403), httpx.ConnectError("boom")):
+        with respx.mock as router:
+            route = router.get(url)
+            if isinstance(response, Exception):
+                route.mock(side_effect=response)
+            else:
+                route.mock(return_value=response)
+            with pytest.raises(MoodleError) as err:
+                await fetch_ics(url)
+        assert "moodle.iitb.ac.in" in err.value.message
+        assert "SECRET" not in err.value.message and "export_execute" not in err.value.message
+        assert "SECRET" not in str(err.value) and err.value.__cause__ is None
+    assert "SECRET" not in caplog.text
 
 
 def test_source_repr_hides_secret():

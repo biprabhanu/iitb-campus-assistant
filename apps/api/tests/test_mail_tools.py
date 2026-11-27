@@ -409,3 +409,27 @@ def test_undated_events_only_from_recent_mail_and_capped() -> None:
     assert kept[0] is dated
     assert old_unclear not in kept
     assert len([e for e in kept if e.start is None]) == MAX_UNCLEAR
+
+
+async def test_a_slow_local_model_never_times_out_the_events_tool(monkeypatch) -> None:
+    """Live: Gemma took ~20 s per mail and the tool hit its 15 s timeout. Now the model only
+    gets the tool's remaining budget; unrefined candidates keep the rules' result."""
+    import asyncio
+
+    monkeypatch.setenv("TOOL_TIMEOUT_S", "5")
+    get_settings.cache_clear()
+    connect(monkeypatch, event_mails())
+
+    class SlowLLM(ScriptedLLM):
+        async def chat(self, messages, tools):
+            self.calls.append((messages, tools))
+            await asyncio.sleep(30)
+
+    llm = SlowLLM()
+    use_llm(monkeypatch, llm)
+    started = datetime.now(UTC)
+    out = await get_upcoming_institute_events(UpcomingEventsInput(days=7))
+    assert (datetime.now(UTC) - started).total_seconds() < 4  # 5 s budget minus the margin
+    assert len(llm.calls) == 1  # stopped after the first slow call
+    assert {e.title for e in out.events} >= {"Guest Talk: Robots"}  # rules results kept
+    assert not out.used_model

@@ -2,7 +2,7 @@
 
 Local:   .venv/bin/python ../../scripts/moodle_check.py        (run from apps/api)
 Hosted:  .venv/bin/python ../../scripts/moodle_check.py --api-url https://your-api.example
-         (sends MOODLE_TOKEN or MOODLE_ICAL_URL from the repo .env to /v1/moodle/check)
+         (sends MOODLE_ICAL_URL, or MOODLE_TOKEN, from the repo .env to /v1/moodle/check)
 """
 
 from __future__ import annotations
@@ -12,11 +12,10 @@ import asyncio
 from pathlib import Path
 
 SETUP_HELP = """Moodle is not configured. To connect it (read-only):
-  1. Moodle -> Preferences -> Security keys -> copy the "Moodle mobile web service" key,
-     then put MOODLE_TOKEN=... in the untracked .env at the repo root
-     (or save it in the app Settings).
-  2. If IITB has web services off: Moodle -> Calendar -> Export calendar, copy the URL,
-     and put MOODLE_ICAL_URL=... in .env.
+  Moodle -> Calendar -> Export calendar -> All events, Recent and next 60 days ->
+  Get calendar URL. Paste it in the app Settings (stored in the Keychain), or put
+  MOODLE_ICAL_URL=... in the untracked .env at the repo root. The link contains a private
+  authtoken: treat it like a password.
 Never share your IITB password; this app never asks for it."""
 
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"

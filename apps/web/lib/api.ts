@@ -116,7 +116,7 @@ export async function checkLlm(creds: LlmCreds): Promise<LLMCheckResponse> {
   };
 }
 
-/** POST /v1/moodle/check: verifies the Moodle token or iCal link, stores nothing. Never throws. */
+/** POST /v1/moodle/check: verifies the Moodle calendar link (or token), stores nothing. Never throws. */
 export async function checkMoodle(creds: MoodleCreds): Promise<MoodleTokenResponse> {
   if (MOCK) return mockCheckMoodle(creds);
   const r = await postWithHeaders("/v1/moodle/check", authHeaders(null, creds));

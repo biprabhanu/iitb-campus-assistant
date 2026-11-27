@@ -182,11 +182,11 @@ test("hosted: settings validate the model override and the Moodle link", async (
   await dialog.getByRole("button", { name: "Test key" }).click();
   await expect(dialog.getByRole("alert").filter({ hasText: "Model names use" })).toBeVisible();
 
-  await dialog.getByLabel("Moodle token or iCal link").fill("https://evil.example.com/cal.ics");
+  await dialog.getByLabel("Moodle calendar link").fill("https://evil.example.com/cal.ics");
   await dialog.getByRole("button", { name: "Test Moodle" }).click();
   await expect(dialog.getByRole("alert").filter({ hasText: "https://moodle.iitb.ac.in/" })).toBeVisible();
 
-  await dialog.getByLabel("Moodle token or iCal link").fill("https://moodle.iitb.ac.in/calendar/export_execute.php?userid=1&authtoken=abc");
+  await dialog.getByLabel("Moodle calendar link").fill("https://moodle.iitb.ac.in/calendar/export_execute.php?userid=1&authtoken=abc");
   await dialog.getByRole("button", { name: "Test Moodle" }).click();
   await expect(dialog.getByRole("status").filter({ hasText: "accepted" })).toBeVisible();
   await expect(dialog.getByText("never sent to the AI model")).toBeVisible();

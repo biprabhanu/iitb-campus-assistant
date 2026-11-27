@@ -198,7 +198,7 @@ for (const size of SIZES) {
         await openHosted(page, "", { key: true });
         await page.getByTestId("provider-pill").click();
         const dialog = page.getByRole("dialog", { name: "Settings" });
-        await dialog.getByLabel("Moodle token or iCal link").fill("mock-moodle-token-123456");
+        await dialog.getByLabel("Moodle calendar link").fill("mock-moodle-token-123456");
         await dialog.getByRole("button", { name: "Test Moodle" }).click();
         await expect(dialog.getByRole("status").filter({ hasText: "accepted" })).toBeVisible();
         await dialog.getByRole("switch", { name: "Remember on this device" }).last().click();

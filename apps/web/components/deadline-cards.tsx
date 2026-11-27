@@ -30,7 +30,7 @@ function DemoBanner() {
         <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
         <span>
           <strong className="font-semibold">Demo data</strong>
-          <span className="text-muted-foreground"> — {hosted ? "add your Moodle token or calendar link" : "connect Moodle"} in Settings to see your real deadlines</span>
+          <span className="text-muted-foreground"> — {hosted ? "add your Moodle calendar link" : "connect Moodle"} in Settings to see your real deadlines</span>
         </span>
       </p>
       <Button size="sm" variant="outline" onClick={() => openSettings("moodle")} className="self-start max-sm:ml-[26px] sm:self-auto">

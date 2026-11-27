@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import UTC, date, datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from icalendar import Calendar
@@ -32,12 +32,23 @@ def validate_ical_url(url: str) -> None:
     credentials.validate_ical_url(url)
 
 
+def masked(url: str) -> str:
+    """The only part of a calendar link we ever show: its host. The path and the `authtoken`
+    query never appear in a message, log line or exception."""
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        host = None
+    return host or "Moodle"
+
+
 _REDIRECT_CODES = {301, 302, 303, 307, 308}
 _MAX_REDIRECTS = 3
 
 
 async def fetch_ics(url: str) -> str:
     validate_ical_url(url)
+    host = masked(url)
     settings = get_settings()
     use_cache = not settings.hosted
     key = fingerprint(url)
@@ -56,20 +67,24 @@ async def fetch_ics(url: str) -> str:
                 hops += 1
                 if not location or hops > _MAX_REDIRECTS:
                     raise MoodleError(
-                        "unavailable", "The Moodle calendar link redirected too much."
+                        "unavailable", f"The Moodle calendar link ({host}) redirected too much."
                     )
                 target = urljoin(str(response.url), location)
                 validate_ical_url(target)  # every hop must stay on the Moodle host
                 response = await http.get(target)
     except httpx.TimeoutException:
         raise MoodleError(
-            "timeout", "Moodle took too long to answer. Try again in a moment."
+            "timeout", f"{host} took too long to answer. Try again in a moment."
         ) from None
     except httpx.HTTPError:
-        raise MoodleError("unavailable", "Could not reach the Moodle calendar export.") from None
+        raise MoodleError(
+            "unavailable", f"Could not reach the Moodle calendar export on {host}."
+        ) from None
     if response.status_code >= 400 or response.status_code in _REDIRECT_CODES:
         raise MoodleError(
-            "unavailable", "The Moodle calendar export link did not work (it may have changed)."
+            "unavailable",
+            f"The Moodle calendar link on {host} did not work. It may have been reset: export "
+            "a new one in Moodle (Calendar → Export calendar) and paste it in Settings.",
         )
     if use_cache:
         _CACHE[key] = (time.monotonic() + settings.moodle_cache_ttl_s, response.text)
