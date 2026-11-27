@@ -183,7 +183,7 @@ const DONE_LABELS: Record<string, string> = {
   asc_my_timetable: "Read your ASC timetable",
   asc_my_current_courses: "Read your ASC courses",
   asc_registration_status: "Checked your ASC registration",
-  asc_fee_status: "Checked your ASC fee status",
+  asc_fee_status: "Checked the ASC scholarship month view",
   asc_offered_courses: "Read ASC running courses",
   asc_course_offering_history: "Checked when the course runs",
   asc_course_details: "Read the course details on ASC",

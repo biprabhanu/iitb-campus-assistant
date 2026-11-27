@@ -124,6 +124,7 @@ class AscSession:
         data: dict[str, str] | None = None,
         *,
         follow: bool = True,
+        referer: str | None = None,
     ) -> tuple[httpx.Response, str, bool]:
         """Send one request and follow redirects by hand. Returns (response, final URL, hopped)."""
         url = self._absolute(target)
@@ -138,7 +139,7 @@ class AscSession:
                 token = _QUIET.set(True)
                 try:
                     response = await self._client.request(
-                        method, url, data=data, headers={"Referer": self._referer}
+                        method, url, data=data, headers={"Referer": referer or self._referer}
                     )
                 except httpx.TimeoutException as exc:
                     if isinstance(exc, httpx.ConnectTimeout):
@@ -157,8 +158,12 @@ class AscSession:
                 return response, url, hopped
         raise ConnectorError("parse_failed", MSG_PAGE)
 
-    async def get(self, target: str, *, allow_login_page: bool = False) -> Page:
-        response, url, hopped = await self._send("GET", target)
+    async def get(
+        self, target: str, *, allow_login_page: bool = False, referer: str | None = None
+    ) -> Page:
+        """GET a page. `referer` overrides the menu page (RunningCourses answers an empty table
+        unless the request comes from the allDept page, as the GO form's would)."""
+        response, url, hopped = await self._send("GET", target, referer=referer)
         path = urlsplit(url).path
         if response.status_code in (401, 403):
             raise SessionExpired()

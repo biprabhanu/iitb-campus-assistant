@@ -304,7 +304,9 @@ async def _fetch_running(
     query = urlencode(
         {"deptcd": deptcd, "year": year, "semester": pages.SEMESTER_NUMBER[semester]}, safe=","
     )
-    page = await session.get(f"{pages.RUNNING_COURSES_PATH}?{query}")
+    page = await session.get(
+        f"{pages.RUNNING_COURSES_PATH}?{query}", referer=session.link("running")
+    )
     rows = parsers.parse_running_courses(page.text, semester_label(year, semester))
     for row in rows:
         if row.detail_href:
@@ -423,14 +425,12 @@ async def _details(session: AscSession, code: str) -> AscCourseDetail | None:
                 raise
     prereq_html = await _optional_page(session, "prereq")
     prereqs = parsers.parse_prerequisites(prereq_html, code) if prereq_html else []
-    syllabus_html = await _optional_page(session, "syllabus")
-    syllabus = parsers.parse_syllabus(syllabus_html, code) if syllabus_html else ""
-    if detail is None and not prereqs and not syllabus:
+    # newallCourse.jsp ("Course Syllabus") is only a department picker that POSTs to a page the
+    # connector may not open, so the syllabus text is crsedetail's Description row.
+    if detail is None and not prereqs:
         return None
     detail = detail or AscCourseDetail(code=code)
     detail.prerequisites = list(dict.fromkeys([*detail.prerequisites, *prereqs]))
-    if syllabus and not detail.syllabus:
-        detail.syllabus = syllabus
     return detail
 
 

@@ -14,7 +14,7 @@ export const PERSONAL_LABELS = {
   asc_my_timetable: "Reading your ASC timetable",
   asc_my_current_courses: "Reading your ASC courses",
   asc_registration_status: "Checking your ASC registration",
-  asc_fee_status: "Checking your ASC fee status",
+  asc_fee_status: "Checking the ASC scholarship month view",
   asc_offered_courses: "Reading ASC running courses",
   asc_course_offering_history: "Checking when the course runs",
   asc_course_details: "Reading the course details on ASC",
@@ -211,14 +211,13 @@ export function personalScript(message: string, cloud = false): PersonalScript |
     };
   }
 
-  // Fee status: amounts are invented.
+  // "Fees Status/Scholarship" on ASC is only a month/year picker for scholarship payments: no fee
+  // table, so no cards. The student is told to check fee dues on ASC.
   if (asc === "fees") {
-    const fee = (label: string, amount: string, due_date: string | null, status: string) => ({ label, amount, due_date, status });
-    const fees = [fee("Tuition fee", "Rs 10,000", null, "Paid"), fee("Hostel rent", "Rs 3,000", "15 Dec 2026", "Due"), fee("Mess advance", "Rs 2,000", null, "Paid")];
     return {
       tools: ["asc_fee_status"],
-      cards: fees.map((f, i): Card => ({ id: `A${i + 1}`, type: "asc_fee", source_label: "ASC", demo: isDemo, fee: f })),
-      text: "ASC shows 3 fee items: 2 paid and 1 due.",
+      cards: [],
+      text: "ASC shows only a scholarship-payment month picker here, not a fee table. Check your fee dues on ASC itself.",
     };
   }
 
