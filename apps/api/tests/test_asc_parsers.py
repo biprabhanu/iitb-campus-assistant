@@ -156,3 +156,26 @@ def test_real_layout_details() -> None:
     p = record.profile  # identity block and advisor row are different tables
     assert p.department and p.program == "M.Tech." and p.status == "Active" and p.advisors
     assert parsers.strip_variant("IE 603 (S1)") == "IE 603"
+
+
+def test_fee_month_picker_gives_no_rows_and_only_two_misec_pages_are_allowed() -> None:
+    from campuspilot.asc import pages
+
+    picker = (
+        "<table><tr><td>Scholarship Paid Details</td></tr><tr><td>Select Month/Year:</td>"
+        "<td><select name='m'><option>Status</option></select></td></tr></table>"
+    )
+    assert parsers.parse_fee_status(picker) == []
+    host = "asc.iitb.ac.in"
+    for path in ("/misec/scholarship/Intermediate.jsp", "/misec/scholarship/scholpaid.jsp"):
+        assert pages.request_allowed("GET", f"https://{host}{path}?x=1", host)
+        assert not pages.request_allowed("POST", f"https://{host}{path}", host)
+    assert not pages.request_allowed("GET", f"https://{host}/misec/scholarship/apply.jsp", host)
+    assert not pages.request_allowed("GET", f"https://{host}/misec/other.jsp", host)
+
+
+def test_live_slot_cell_gives_slot_and_room() -> None:
+    assert parsers._slot_name("4 Mon-4A-11:35:00-12:30:00- Thu-4C-09:30:00-10:25:00-") == "4"
+    cell = "1 Mon-1A-08:30:00-09:25:00-Class Room : LT 001 Thu-1C-Class Room : LT 001"
+    assert parsers._slot_venue(cell) == "LT 001"
+    assert parsers._slot_venue("FullSemester") is None

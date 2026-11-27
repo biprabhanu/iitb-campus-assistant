@@ -92,6 +92,12 @@ STATIC_PAGES = frozenset(
     }
 )
 POST_PAGES = frozenset({"ldaplogin.jsp", "allDept.jsp", "RunningCourses.jsp"})
+# The "Fees Status/Scholarship" leaf (middlemisec*.jsp) redirects to Intermediate.jsp, which
+# redirects to scholpaid.jsp (the status table). The owner allowed these two pages, GET only,
+# read-only (27 Nov 2026). Nothing else under /misec/ is allowed.
+FEE_REDIRECT_PATHS = frozenset(
+    {"/misec/scholarship/Intermediate.jsp", "/misec/scholarship/scholpaid.jsp"}
+)
 ALLOWED_PREFIXES = ("/acadmenu/", "/academic/")
 
 
@@ -116,6 +122,8 @@ def path_allowed(method: str, path: str, extra_pages: frozenset[str] = frozenset
     """May the connector send `method` to this URL path? `path` has no query string.
 
     `extra_pages` is the session's fee page (taken from the menu at login)."""
+    if method == "GET" and path in FEE_REDIRECT_PATHS:
+        return True
     if not path.startswith(ALLOWED_PREFIXES) or has_forbidden_keyword(path):
         return False
     name = basename(path)

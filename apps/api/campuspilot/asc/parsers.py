@@ -553,6 +553,16 @@ class RunningRow:
     detail_href: str | None = field(default=None, repr=False)
 
 
+def _slot_name(text: str) -> str | None:
+    """Live Slot cells hold the slot then its schedule ("4 Mon-4A-11:35:00-12:30:00- ...")."""
+    return text.split()[0] if text.split() else None
+
+
+def _slot_venue(text: str) -> str | None:
+    rooms = list(dict.fromkeys(m.strip() for m in re.findall(r"Room\s*:\s*([A-Za-z]+ ?\d+)", text)))
+    return ", ".join(rooms) or None
+
+
 def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
     best: tuple[int, list[RunningRow]] | None = None
     for table in soup(html).find_all("table"):
@@ -600,9 +610,9 @@ def parse_running_courses(html: str, semester: str = "") -> list[RunningRow]:
                         code=normalise_code(strip_variant(at(c_code))),
                         title=at(c_name),
                         credits=_floatish(at(c_cred)) if c_cred is not None else None,
-                        slot=at(c_slot) or None,
+                        slot=_slot_name(at(c_slot)),
                         instructor=at(c_inst) or None,
-                        venue=at(c_venue) or None,
+                        venue=_slot_venue(at(c_venue)) or _slot_venue(at(c_slot)),
                         course_type=at(c_type) or None,
                         division=at(c_div) or None,
                         status="other",
@@ -735,8 +745,8 @@ def parse_fee_status(html: str) -> list[AscFeeItem]:
     for table in soup(html).find_all("table"):
         if table.find("table") is not None:
             continue  # a layout wrapper; its inner tables are visited on their own
-        if _BAD_SECTION.search(_section_text(table)):
-            continue
+        if _BAD_SECTION.search(_section_text(table)) or table.find(["select", "input"]):
+            continue  # forbidden sections, and form controls (the live page is a month picker)
         rows = _rows(table)
         header_i = next(
             (

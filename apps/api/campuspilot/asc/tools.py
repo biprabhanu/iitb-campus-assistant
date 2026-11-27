@@ -230,7 +230,14 @@ async def asc_registration_status(args: AscRegistrationStatusInput) -> AscRegist
 async def asc_fee_status(args: AscFeeStatusInput) -> AscFeeStatusOutput:
     snap = await _section("fees")
     items = snap.fees or []
-    note = "" if items else "No fee rows were found on ASC."
+    note = (
+        ""
+        if items
+        else (
+            "ASC's Fees Status/Scholarship page only offers a month picker for scholarship "
+            "payments, so there is no fee status to show. Check fee dues on the ASC site."
+        )
+    )
     return AscFeeStatusOutput(items=items, note=note, demo=_demo(), fetched_at=snap.fetched_at)
 
 
