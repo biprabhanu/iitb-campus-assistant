@@ -4,7 +4,7 @@ For the project owner. You need a GitHub account with this repo, a Render accoun
 
 No secret is set anywhere. Students bring their own model key, and the server never holds one.
 
-Placeholders used below: `<RENDER_URL>` (for example `https://campuspilot-api-xxxx.onrender.com`) and `<VERCEL_URL>` (the production URL, no trailing slash). Both are TBD until you finish steps 1 and 2.
+The live values are filled in below: the API is `https://campuspilot-api-mve5.onrender.com` and the web app is `https://iitb-campus-assistant.vercel.app` (no trailing slashes). If you deploy your own copy, use your own URLs.
 
 ## Steps
 
@@ -15,24 +15,24 @@ Placeholders used below: `<RENDER_URL>` (for example `https://campuspilot-api-xx
 3. Render reads `render.yaml`: one free Docker web service named `campuspilot-api`, region Singapore, health check `/health`, auto-deploy on push.
 4. When it asks for `ALLOWED_ORIGINS`, leave it empty for now (you set it in step 3).
 5. Click **Apply** and wait for the first deploy to finish. The first Docker build takes several minutes.
-6. Copy the service URL (`https://....onrender.com`). This is `<RENDER_URL>`.
-7. Open `<RENDER_URL>/health`. It should show `{"ok":true}`.
+6. Copy the service URL (`https://....onrender.com`). This is `https://campuspilot-api-mve5.onrender.com`.
+7. Open `https://campuspilot-api-mve5.onrender.com/health`. It should show `{"ok":true}`.
 
 ### 2. Vercel (the web app)
 
 1. Open Vercel. Click **Add New** -> **Project**.
 2. Import this GitHub repository.
 3. Set **Root Directory** to `apps/web`.
-4. Under **Environment Variables** add `NEXT_PUBLIC_API_URL` = `<RENDER_URL>` (no trailing slash).
+4. Under **Environment Variables** add `NEXT_PUBLIC_API_URL` = `https://campuspilot-api-mve5.onrender.com` (no trailing slash).
 5. Click **Deploy**.
-6. Copy the production URL. This is `<VERCEL_URL>`.
+6. Copy the production URL. This is `https://iitb-campus-assistant.vercel.app`.
 
 `NEXT_PUBLIC_*` values are baked in at build time. If you change one later, redeploy.
 
 ### 3. Render again: allow the web app (CORS)
 
 1. In Render, open the service -> **Environment**.
-2. Set `ALLOWED_ORIGINS` = `<VERCEL_URL>` (no trailing slash). Several origins can be comma separated.
+2. Set `ALLOWED_ORIGINS` = `https://iitb-campus-assistant.vercel.app` (no trailing slash). Several origins can be comma separated.
 3. Save. Render redeploys.
 
 ### 4. Build the index
@@ -48,7 +48,7 @@ Placeholders used below: `<RENDER_URL>` (for example `https://campuspilot-api-xx
 4. Check the result:
 
    ```bash
-   curl -s <RENDER_URL>/v1/status
+   curl -s https://campuspilot-api-mve5.onrender.com/v1/status
    ```
 
    Look for `"index":"release"` and an `index_version` such as `index-YYYY-MM-DD`. `"index":"fallback"` means the download failed and the tiny demo index (`index_version` `fixtures`) is in use. Check the Render logs.
@@ -58,7 +58,7 @@ Placeholders used below: `<RENDER_URL>` (for example `https://campuspilot-api-xx
 From the repo root, after `make setup`:
 
 ```bash
-make smoke-hosted URL=<RENDER_URL> ORIGIN=<VERCEL_URL>
+make smoke-hosted URL=https://campuspilot-api-mve5.onrender.com ORIGIN=https://iitb-campus-assistant.vercel.app
 ```
 
 `ORIGIN` is optional. The script reads `TEST_LLM_PROVIDER` and `TEST_LLM_KEY` from your local `.env` (your own test key; never deployed, never printed). Without a key, the live-answer and bad-key checks are skipped and the script says so. It exits with code 1 on any failure. The first request may take about a minute if the service was asleep.
@@ -102,7 +102,7 @@ Set in `render.yaml` or the dashboard:
 | `INDEX_SOURCE` | `release` (code default `local`) | `release` downloads the newest `index-*` GitHub Release at startup. |
 | `INDEX_REPO` | `biprabhanu/iitb-campus-assistant` | GitHub repo whose releases hold the index. |
 | `CAMPUSPILOT_DB_PATH` | `/tmp/campuspilot.db` | Where the index is stored. Free-tier disk is ephemeral. |
-| `ALLOWED_ORIGINS` | empty (`sync: false`, set in dashboard) | Extra CORS origins, comma separated. Set to `<VERCEL_URL>`. |
+| `ALLOWED_ORIGINS` | empty (`sync: false`, set in dashboard) | Extra CORS origins, comma separated. Set to `https://iitb-campus-assistant.vercel.app`. |
 
 Set in the Dockerfile (override in the dashboard only if needed):
 
@@ -140,7 +140,7 @@ Ignored in hosted mode (local only): `OLLAMA_*`, `LLM_FALLBACK_*`, `MOODLE_TOKEN
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | The API base URL. Set to `<RENDER_URL>`. Public by design. (`NEXT_PUBLIC_API_BASE` is the older name and still works.) |
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | The API base URL. Set to `https://campuspilot-api-mve5.onrender.com`. Public by design. (`NEXT_PUBLIC_API_BASE` is the older name and still works.) |
 | `NEXT_PUBLIC_MOCK` | `false` | `true` makes the UI replay a built-in fake stream and never call the API. Leave `false` in production. |
 
 ## Default models
@@ -158,7 +158,7 @@ The probe is `scripts/probe_provider.py`. It uses the owner's own test key from 
 
 Groq probe, 2026-11-26: `/models` listed 11 models; the earlier guesses `llama-3.1-8b-instant` and `llama-3.3-70b-versatile` were **no longer listed**. Tool-call probe passed for `openai/gpt-oss-20b`, `openai/gpt-oss-120b` and `qwen/qwen3.8-27b`. Groq's response headers reported, per model: 1,000 requests per day and 8,000 tokens per minute. The router and answer models are different, so each has its own per-minute budget. Model lists change; re-run the probe before relying on these ids.
 
-Measured questions per minute on a free Groq key: TBD after Phase 3.
+Measured pace on a free Groq key: the hosted acceptance run (25 questions, 20 s apart) is in `docs/EVAL.md`. The provider's own limit (about 8,000 tokens per minute per model) is the one that bites first.
 
 ## Free-tier limits
 

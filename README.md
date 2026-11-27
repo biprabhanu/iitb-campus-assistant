@@ -1,203 +1,159 @@
 # CampusPilot
 
-CampusPilot is a chat assistant for IIT Bombay students. Ask a question in plain language and get a short answer with citations to official public IITB pages, or a read-only summary of your own Moodle deadlines and courses. The API, web UI and document index run on your Mac; the language model (Gemma 4 26B via Ollama) runs on the IEOR course server and is reached through an SSH tunnel. Nothing is sent to a cloud service by default.
+CampusPilot is a chat assistant for IIT Bombay students. Ask a question in plain language and get a short answer with citations to official public IITB pages, plus a read-only view of your own Moodle deadlines. In the local app it can also read your webmail (and suggest Google Calendar events you confirm with one click) and your ASC timetable, courses, registration and profile. It runs in two modes from one codebase: **local** (the model is Gemma 4 26B on the IEOR course server, reached through an SSH tunnel) and **hosted** (public Q&A only, where each student brings their own free LLM key, for example Groq). The retrieval index is SQLite FTS5 over a registry of approved public sources. Personal connectors run only on your own computer.
 
 > **Disclaimer.** CampusPilot is an IE624 student prototype. It is **not an official IIT Bombay service** and is not affiliated with IIT Bombay. Answers can be wrong or out of date. Always check the official page linked in each answer, and contact the responsible office for anything that matters.
 
-## Status (26 Nov 2026)
-
-Honest status words only: `implemented_and_tested`, `implemented_not_tested`, `blocked`.
-
-| Definition of done | Status | Evidence |
-|---|---|---|
-| `make dev` starts API + UI on 127.0.0.1 | implemented_and_tested | both listen on 127.0.0.1 only (lsof) |
-| Academic calendar → streamed answer with validated citation cards | implemented_and_tested | live Gemma; see `docs/screenshots/live-answer-*.png` |
-| "What's due this week?" → Moodle deadline cards | implemented_and_tested (demo fixtures) | live Moodle calendar link **not tested** yet |
-| Unanswerable question → "couldn't verify" + office link | implemented_and_tested | live; `live-abstain-*.png` |
-| Ambiguous question → one clarifying question | implemented_and_tested | live, 6/6 stable runs |
-| Tunnel down → "Model offline", nothing crashes | implemented_and_tested | live with a closed port; unit tests |
-| pytest, ruff, lint, type-check, build, Playwright | implemented_and_tested | `make test` exits 0 (139 pytest, 7 Playwright) |
-| Screenshots at 1440 and 390 px, both themes | implemented_and_tested | `docs/screenshots/` (reviewed) |
-| No secrets, IPs, usernames, tokens, raw data or DBs in Git | implemented_and_tested | `make secrets-check` + username grep |
-
-Acceptance check (25 questions, live, a small single-user check, not a benchmark): **96%** expected
-behaviour, **75%** expected source cited, median time to first token 6.2 s. Details and caveats in
-[docs/EVAL.md](docs/EVAL.md).
-
-**Known limitation: hostel rules can't be cited.** The official *Hostel Rules and Regulations* PDF
-(`SRC-HOSTEL-RULES`) is a scanned document with no text layer, and v1 has no OCR. It is kept as a
-link-only source: CampusPilot can point you to the PDF, but it can't quote or cite it. Hostel
-questions are answered from the Hostel Affairs Council FAQ (student-body guidance, tier 2) where it
-covers them. Otherwise CampusPilot says it couldn't verify the answer and links the rules PDF. See
-[docs/SOURCES.md](docs/SOURCES.md#known-limitations).
-
 ![CampusPilot answering with cited sources](docs/screenshots/live-answer-1440-dark.png)
 
+## Architecture
+
+```mermaid
+flowchart LR
+  B["Browser<br/>Next.js chat UI"] -->|"POST /v1/chat (SSE)"| A["FastAPI<br/>orchestrator + tools"]
+  A --> R[("Retrieval<br/>SQLite FTS5<br/>official public pages")]
+  A -->|"local mode"| G["Local Gemma 4 26B<br/>Ollama on course server<br/>via SSH tunnel"]
+  A -->|"hosted mode, student's own key"| C["BYOK cloud LLM<br/>Groq, Gemini, OpenAI, OpenRouter"]
+  A -.->|"local mode only"| W["Webmail<br/>IMAP, read-only"]
+  A -.->|"local mode only"| S["ASC<br/>LDAP login, in-memory snapshot"]
+  A -.->|"local or hosted"| M["Moodle<br/>iCal link, read-only"]
+  A -.->|"local mode only, on click"| K["Google Calendar<br/>primary calendar"]
+```
+
+Solid arrows are used in every mode. Dashed arrows are connectors. Webmail, ASC and Google Calendar are never mounted in hosted mode. More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the API contract [docs/CONTRACT.md](docs/CONTRACT.md).
+
+## Live pilot
+
+- **Try it:** https://iitb-campus-assistant.vercel.app (API on Render: https://campuspilot-api-mve5.onrender.com). The free server sleeps when idle, so the first request can take about a minute.
+- **Bring your own free key.** CampusPilot has no AI account of its own. Make a free [Groq](https://console.groq.com/keys) key (no card) and paste it in the welcome card. See [docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md).
+- **Privacy in three bullets:**
+  - Your key and your Moodle link stay in your browser. They are sent with each request and used once. The server never stores or logs them.
+  - Your questions and the excerpts of official pages used to answer go to the AI provider you chose. Your Moodle content is never sent to any LLM.
+  - The server keeps nothing about you. Webmail, ASC and Google Calendar do not exist on the hosted site.
 
 ## Features
 
-- **Cited Q&A over official IITB pages.** Answers cite the pages they come from (calendar, entrants, Dean of Student Affairs rules and similar). Each citation card links to the source page. When the sources don't cover a question, CampusPilot says so and points you to the right office or portal.
-- **Clarifying questions.** For ambiguous questions such as "Can I change my room?", it asks one clarifying question instead of guessing.
-- **Read-only Moodle.** "What's due this week?" shows deadline cards, and course lists and contents are available when a token is connected. CampusPilot never writes to Moodle.
-- **Demo mode.** With nothing connected, deadline cards come from clearly labelled demo fixtures ("Demo data").
-- **Honest offline state.** If the model is unreachable, the UI shows "Offline" with a helpful message and the official links it can still offer.
+- **Cited Q&A over official IITB pages.** Each answer cites the pages it came from, and each citation card links to the source. When the sources do not cover a question, it says so and points to the right office. For ambiguous questions it asks one clarifying question.
+- **Moodle deadlines (read-only).** "What's due this week?" shows deadline cards from your Moodle calendar (iCal) link. Nothing is ever written to Moodle.
+- **Webmail events to Google Calendar (local only).** Read-only IMAP search of your mail, event detection, and an **Add** button on each event card. An event is created only when you click Add, in your primary calendar, and never twice (dedupe).
+- **ASC (local only).** Your timetable, current courses, registration status and profile, plus public data: courses offered by department, offering history and course details. Grades are never read.
+- **Demo mode.** With nothing connected, deadline and connector cards come from clearly labelled demo fixtures.
+- **Honest offline state.** If the model is unreachable, the UI says so and still offers the official links.
 
-## Prerequisites
+## Privacy design
 
-- macOS (the Moodle calendar link is stored in the macOS Keychain; the Makefile targets are written for macOS).
-- [uv](https://docs.astral.sh/uv/) (installs the Python 3.12 virtual environment for the API).
-- Node 20 or newer, with npm.
-- IITB network access (campus Wi-Fi or LAN, or the IITB VPN when off campus) for the model tunnel. The model server is only reachable from inside the campus network. You can skip this with `make mock-dev`.
+- **Connectors run only locally.** In hosted mode the connector router is not mounted and the tools are not offered, whatever the flags say.
+- **Secrets in the macOS Keychain.** LDAP id, mail access token, ASC password, Google token and the Moodle link are stored in the Keychain, never in files or the repo, and never logged.
+- **Read-only.** Mail is fetched with IMAP `BODY.PEEK` (never marks mail as read; no send, move or delete). Moodle and ASC are read only. ASC is limited to an allowlist of pages.
+- **Personal data goes only to the local Gemma.** Mail text is read only by the local model. Your own ASC data is offered only when the chat model is local; the model sees a count and the cards go straight to the UI. With a cloud model, CampusPilot refuses personal ASC questions and answers only from public data.
+- **Moodle content is never sent to any LLM**, in either mode.
+- **No grades.** Grades, SPI/CPI and the performance summary are never read.
+- **Local binding.** The API and UI bind to `127.0.0.1` only. Chat history stays in your browser.
 
-## Setup from scratch
+## How to run
 
-1. Clone the repository and enter it:
-
-   ```sh
-   git clone https://github.com/biprabhanu/iitb-campus-assistant.git
-   cd iitb-campus-assistant
-   ```
-
-2. Install the API and web dependencies (creates `apps/api/.venv` and installs Playwright's Chromium):
-
-   ```sh
-   make setup
-   ```
-
-3. Create your local configuration. `.env` is untracked and must never be committed:
-
-   ```sh
-   cp .env.example .env
-   ```
-
-4. Open the model tunnel to the course server. You need your own access to the course server and an SSH config alias named `passpoli-llm` on your machine. Ask the course team for access. Do not share or copy anyone else's SSH keys or config.
-
-   ```sh
-   ssh -fN passpoli-llm
-   ```
-
-5. Check that the tunnel is up. It should print `tunnel: up`:
-
-   ```sh
-   make tunnel-check
-   ```
-
-6. Build the document index from the approved sources. This fetches slowly on purpose (see [docs/SOURCES.md](docs/SOURCES.md)):
-
-   ```sh
-   make ingest
-   ```
-
-7. Start the API and the web UI together:
-
-   ```sh
-   make dev
-   ```
-
-   Open http://127.0.0.1:3000.
-
-## Running without the tunnel
-
-For demos and UI work, use the scripted fake model. Real tools and the index still run, but the answers are canned:
+Prerequisites: macOS, [uv](https://docs.astral.sh/uv/), Node 20 or newer. For the real model you need your own access to the course server and an SSH alias named `passpoli-llm`, while on campus Wi-Fi or the IITB VPN (the model server is not reachable otherwise). Without that, use mock mode.
 
 ```sh
-make mock-dev
+git clone https://github.com/biprabhanu/iitb-campus-assistant.git
+cd iitb-campus-assistant
+make setup                 # installs the API and web dependencies
+cp .env.example .env       # untracked; never commit it
 ```
 
-Then open http://127.0.0.1:3000.
-
-This works on a fresh clone, with no tunnel and nothing ingested:
-
-- If `data/campuspilot.db` is missing, `make mock-dev` first builds a small demo index from the synthetic pages in `data/fixtures/docs/` (`scripts/build_demo_index.py`). Those cards say **"Demo fixture, not official"**, and the sample text is not real IITB information. An existing index is never touched.
-- Official office and portal links come straight from `data/sources/registry.csv`, so they work even with an empty database.
-- "Where can I find the academic calendar?" then gives a cited answer whose card links to the official calendar page.
-- To switch to the real pages, run `make ingest` (needs internet). It removes the demo sources first. To rebuild the demo index, delete `data/campuspilot.db` and run `make mock-dev` again.
-
-## Connecting Moodle (optional, read-only)
-
-You can connect Moodle in the app under **Settings**. The app never asks for your Moodle password.
-
-1. In Moodle, go to **Calendar → Export calendar**, choose **All events** and **Recent and next 60 days**, then click **Get calendar URL** and copy the link. (IITB Moodle has no "mobile web service" key for students, so the calendar link is the way in.)
-2. Paste the link into **Settings → Moodle**. The app checks it with Moodle and stores it in the macOS Keychain. The browser does not keep it, and it is never shown again.
-3. The link contains a private `authtoken`, so treat it like a password. The app never logs it, and its errors show only the host (`moodle.iitb.ac.in`). In this mode CampusPilot reads deadlines; course lists and contents are not available, and the UI says so.
-4. To remove the connection, click **Disconnect Moodle** in **Settings**. This deletes the link from the Keychain.
-
-You can also set `MOODLE_ICAL_URL` in the untracked `.env` (`MOODLE_TOKEN` exists only for other Moodle sites that offer a web service key). Settings is the recommended route because it keeps the value out of files. Check the link from the command line with:
+### Mock (no tunnel, no model)
 
 ```sh
-make moodle-check
+make mock-dev              # then open http://127.0.0.1:3000
 ```
 
-With nothing connected, `MOODLE_DEMO_WHEN_UNCONFIGURED=true` (the default) shows labelled demo deadlines.
+A scripted fake model answers. Real tools and the index still run. On a fresh clone it first builds a small demo index from synthetic pages (cards say "Demo fixture, not official"). Run `make ingest` to index the real pages (needs internet; it fetches slowly on purpose, see [docs/SOURCES.md](docs/SOURCES.md)).
+
+### Local (real Gemma)
+
+```sh
+ssh -fN passpoli-llm       # open the tunnel (127.0.0.1:11500)
+make tunnel-check          # should print: tunnel: up
+make dev                   # API on 127.0.0.1:8000, UI on 127.0.0.1:3000
+```
+
+To turn on the connectors, set `WEBMAIL_ENABLED=true`, `ASC_ENABLED=true` and `GCAL_ENABLED=true` in `.env` (or on the command line) and connect each one under **Settings, Connectors**. The one-liner the owner uses:
+
+```sh
+cd ~/Projects/iitb-campus-assistant && make setup && { pgrep -f "ssh -fN passpoli-llm" >/dev/null || ssh -fN passpoli-llm; } && make tunnel-check && { (sleep 25; open http://127.0.0.1:3000) & WEBMAIL_ENABLED=true ASC_ENABLED=true GCAL_ENABLED=true make dev; }
+```
+
+Connector setup (LDAP id and access token, Google "Desktop app" OAuth client) is in [docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md).
+
+### Moodle (optional, read-only)
+
+In Moodle go to **Calendar, Export calendar**, choose **All events** and **Recent and next 60 days**, click **Get calendar URL**, and paste the link in **Settings, Moodle**. The link carries a private `authtoken`, so treat it like a password. Locally it goes to the macOS Keychain; on the hosted site it stays in your browser. Disconnect from Settings. Check it from the command line with `make moodle-check`.
+
+### Hosted
+
+The hosted pilot is the Vercel UI plus the Render API above. To deploy your own copy, follow [docs/DEPLOY.md](docs/DEPLOY.md). To check a deployed API: `make smoke-hosted URL=<api-url> ORIGIN=<ui-url>`. To run the hosted image locally: `make docker-build` then `make docker-run` (127.0.0.1:8001).
 
 ## Tests
 
+TEST_COUNTS_TBD
+
 | Command | What it runs |
 |---|---|
-| `make test` | Everything below (offline) |
+| `make test` | Everything below (offline): pytest, ruff, eslint, tsc, next build, Playwright smoke |
 | `make test-api` | pytest and ruff for the API |
 | `make test-web` | Lint, type-check, production build and the Playwright smoke test |
-| `make lint` | ruff and eslint only |
-| `make acceptance` | Live 25-question check against the model (needs the tunnel and `make dev`'s API); writes `data/eval/results-<date>.json` |
-| `make screenshots` | Regenerates `docs/screenshots/` with Playwright |
+| `make acceptance` | Live 25-question check against the local model (needs the tunnel and the API). `python scripts/acceptance_check.py --api-url <api>` runs it against a hosted API with your own key from `.env` |
+| `make secrets-check` | The security sweep |
+| `make screenshots` | Regenerates `docs/screenshots/` |
 
-## A two-minute demo
+Evaluation (a small single-user check, not a benchmark): local Gemma 96% expected behaviour and 75% expected source cited; hosted Groq (own key, first untuned run, 27 Nov 2026) 68% and 12%, with first-token latency 1.8 s median versus 6.2 s. Details and caveats in [docs/EVAL.md](docs/EVAL.md).
 
-1. Open the app with `make dev` (or `make mock-dev`).
-2. Show the four starter cards: **Academic calendar**, **What's due this week?**, **Report a hostel maintenance issue**, and **Code of conduct basics**. Click the calendar card. Point out the citation chips and the source cards.
-3. Click **What's due this week?** Point out the deadline cards and the "Demo data" banner if no Moodle is connected.
-4. Type **"Can I change my room?"** It should ask one clarifying question (for example, undergraduate or postgraduate). Answer it and show the cited follow-up.
-5. Type **"What is the mess menu on 3 March 2031?"** It should say it could not verify this in its sources and point to the hostel office and the official links.
-6. Stop the tunnel (find it with `pgrep -fl "ssh -fN passpoli-llm"` and stop that process with `kill <pid>`), then send a question. The UI shows **Offline** with a helpful message, and nothing crashes.
+## Limitations
 
-## Privacy and safety
-
-- **Local only.** The API and web UI bind to `127.0.0.1`. Nothing is exposed on your network.
-- **Chat history stays in your browser.** The conversation is kept in the browser and is not stored on the server.
-- **Moodle calendar link.** It is stored in the macOS Keychain, is never logged (errors show only the host), and is never sent to the language model. Moodle data is not sent to a cloud model unless `ALLOW_PERSONAL_DATA_TO_CLOUD=true`.
-- **Cloud fallback is off by default.** `LLM_FALLBACK_ENABLED=false` and `ALLOW_PERSONAL_DATA_TO_CLOUD=false` in `.env.example`. Turning on the fallback is a deliberate choice.
-- **Read-only tools.** The model can search the index, look up official links, and read Moodle. It cannot change anything.
+- Answers come from a small index (9 ingested sources, 44 documents). Anything outside it gets "couldn't verify" and an office link. The acceptance questions were written by the build team, and the prompts were tuned while looking at them, so the numbers are optimistic.
+- **Hostel rules cannot be cited.** The official PDF is a scan with no text layer and there is no OCR. It is a link-only source. See [docs/SOURCES.md](docs/SOURCES.md#known-limitations).
+- Connectors are local only and need macOS (Keychain), the campus network or VPN (ASC, webmail), and your own Google OAuth client.
+- ASC's fees page is only a scholarship-payment month picker, so there is no fee table to show. The parsers follow ASC's current page layout and may need updates if it changes.
+- Only Groq has been tested as a hosted provider. Gemini, OpenAI and OpenRouter are `not_tested`.
+- The free hosted server sleeps when idle and Groq's free tier has token limits, so the hosted site can be slow or briefly rate-limited.
+- Moodle may not be reachable from the hosted server; the local app always can.
 
 ## Project layout
 
 ```text
 iitb-campus-assistant/
 ├── Makefile                 # all developer commands (make help)
-├── .env.example             # configuration template (copy to .env)
-├── MASTER_BUILD_PROMPT.md   # the build brief
 ├── apps/
-│   ├── api/                 # FastAPI backend (Python 3.12, uv)
-│   │   ├── campuspilot/
-│   │   │   ├── agent/       # orchestrator, prompts, citation checks
-│   │   │   ├── api/         # HTTP routes, SSE, middleware
-│   │   │   ├── ingestion/   # registry, polite fetcher, parsing, chunking, SQLite
-│   │   │   ├── llm/         # Ollama client, mock model, optional fallback
-│   │   │   ├── moodle/      # REST and iCal clients, Keychain, demo data
-│   │   │   ├── retrieval/   # search_campus_docs and get_official_link
-│   │   │   ├── schemas/     # Pydantic models (the contract)
-│   │   │   └── tools/       # tool registry and evidence
-│   │   └── tests/
-│   └── web/                 # Next.js chat UI (React, Tailwind, Playwright)
-├── data/
-│   ├── sources/             # registry.csv (the only copy) and AUDIT.md
-│   ├── eval/                # questions.jsonl for the acceptance check
-│   └── fixtures/            # offline HTML and Moodle demo data
-├── docs/
-│   ├── ARCHITECTURE.md      # how the parts fit together
-│   ├── SOURCES.md           # approved sources and how we fetch them
-│   ├── CONTRACT.md          # interface contract between the parts
-│   ├── BUILD_LOG.md         # decisions and conflicts per phase
-│   ├── EVAL.md              # live acceptance-check results
-│   └── screenshots/
-└── scripts/                 # ingest, reindex, moodle_check, acceptance_check
+│   ├── api/campuspilot/     # FastAPI backend (Python 3.12, uv)
+│   │   ├── agent/           # orchestrator, prompts, citation checks, personal answers
+│   │   ├── api/             # routes, SSE, hosted headers, rate limits
+│   │   ├── asc/             # ASC connector (local only)
+│   │   ├── gcal/            # Google Calendar connector (local only)
+│   │   ├── mail/            # Webmail IMAP connector (local only)
+│   │   ├── ingestion/       # registry, polite fetcher, parsing, chunking, SQLite
+│   │   ├── llm/             # Ollama, BYOK and mock clients
+│   │   ├── moodle/          # iCal and REST clients, Keychain, demo data
+│   │   └── retrieval/       # SQLite FTS5 search
+│   └── web/                 # Next.js chat UI
+├── data/                    # sources/registry.csv, eval questions, fixtures
+├── docs/                    # architecture, contract, API, deploy, eval, guides
+└── scripts/                 # ingest, reindex, acceptance, smoke, index release
 ```
 
 Generated and private files (`.env`, `data/campuspilot.db`, `data/raw/`, `.venv`, `node_modules`) are gitignored.
 
 ## Troubleshooting
 
-- **`make tunnel-check` says DOWN, or `ssh -fN passpoli-llm` reports "Address already in use" on port 11500.** The tunnel is already running, which is what you want. Run `make tunnel-check` to confirm. If the check still fails, close the old tunnel and open it again.
-- **"Model offline" in the UI.** The tunnel is down, or you are off the IITB network. Reconnect to campus or the VPN, run `make tunnel-check`, and try again. The official links shown in the answer still work.
-- **The first answer is slow.** The model loads into GPU memory on the first request after it has been idle. In our Phase 0 check the cold load took about 9 seconds, and later answers are faster. Send a quick question to warm it up.
-- **`make ingest` skips or fails some pages.** Some IITB pages are unreachable or have no text (scanned PDFs). That is expected. See [docs/SOURCES.md](docs/SOURCES.md) and `data/sources/AUDIT.md`. A fallback fetch via an SSH alias named `passpoli` is used only when a page fails from your Mac.
-- **No deadline cards.** Without a connected Moodle account, you should see labelled demo cards. If you see nothing, run `make moodle-check` and check the Settings panel.
+- **`make tunnel-check` says DOWN, or `ssh -fN passpoli-llm` reports "Address already in use" on port 11500.** The tunnel is probably already running. Run `make tunnel-check` to confirm; if it still fails, close the old tunnel and open it again.
+- **"Model offline" in the UI.** The tunnel is down, or you are off the IITB network. Reconnect, run `make tunnel-check`, and try again.
+- **The first answer is slow.** The model loads into GPU memory on the first request after idle (about 9 seconds when we measured).
+- **`make ingest` skips some pages.** Some IITB pages are unreachable or scanned PDFs with no text. That is expected; see [docs/SOURCES.md](docs/SOURCES.md).
+- **No deadline cards.** Without a connected Moodle you see labelled demo cards. Otherwise run `make moodle-check` and check Settings.
+
+## Docs
+
+[docs/EVAL.md](docs/EVAL.md) (acceptance numbers) · [docs/REPRODUCE.md](docs/REPRODUCE.md) (reproduce the build and the numbers) · [docs/STUDENT_GUIDE.md](docs/STUDENT_GUIDE.md) (using the pilot) · [docs/FINAL_REPORT.md](docs/FINAL_REPORT.md) (final report) · [docs/API.md](docs/API.md) · [docs/DEPLOY.md](docs/DEPLOY.md) · [docs/SOURCES.md](docs/SOURCES.md)
+
+## Team
+
+TEAM_TBD
