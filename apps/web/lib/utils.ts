@@ -23,6 +23,20 @@ export function checkedAgo(iso?: string | null, now = Date.now()): string | null
   return `checked ${months} months ago`;
 }
 
+/** "just now", "5 minutes ago", "2 hours ago", "3 days ago" (for "Updated ..."). Empty when the date is unusable. */
+export function relativePast(iso?: string | null, now = Date.now()): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const mins = Math.floor((now - t) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} ${mins === 1 ? "minute" : "minutes"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
 /** "in 2 days", "in 5 hours", "overdue". `urgent` is true under 24 h. */
 export function relativeDue(iso: string, now = Date.now()): { text: string; urgent: boolean; overdue: boolean } {
   const diff = Date.parse(iso) - now;
@@ -165,8 +179,13 @@ const DONE_LABELS: Record<string, string> = {
   search_my_mail: "Searched your mail",
   list_recent_mail: "Read your latest mail",
   get_upcoming_institute_events: "Found events in your mail",
-  get_my_timetable: "Read your ASC timetable",
-  get_my_registered_courses: "Read your ASC courses",
-  get_my_grades: "Read your ASC grades",
+  asc_profile: "Read your ASC profile",
+  asc_my_timetable: "Read your ASC timetable",
+  asc_my_current_courses: "Read your ASC courses",
+  asc_registration_status: "Checked your ASC registration",
+  asc_fee_status: "Checked your ASC fee status",
+  asc_offered_courses: "Read ASC running courses",
+  asc_course_offering_history: "Checked when the course runs",
+  asc_course_details: "Read the course details on ASC",
 };
 export const doneLabel = (name: string, fallback: string) => DONE_LABELS[name] ?? fallback;

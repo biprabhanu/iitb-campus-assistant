@@ -54,6 +54,14 @@ export function mockHold(): "tool" | "text" | null {
 export const mockHosted = () => flag("mockHosted", process.env.NEXT_PUBLIC_MOCK_HOSTED);
 
 /**
+ * Mock-only: pretend the chat model is a cloud model (Groq and the like) instead of local Gemma.
+ * ?mockCloud=1: a question about the student's own ASC data (timetable, courses, registration,
+ * fees, profile) is then refused with the contract text, as the real API does (CONTRACT 11.8).
+ * Public ASC questions (offered courses, offering history, course details) still work.
+ */
+export const mockCloud = () => flag("mockCloud", process.env.NEXT_PUBLIC_MOCK_CLOUD);
+
+/**
  * Mock-only, for tests: ?mockNet=1 makes the status, ping and connector calls use the real `fetch`
  * (chat stays mocked). Playwright then answers them with `page.route`, so a test can see exactly
  * which requests (and headers) the UI sends.

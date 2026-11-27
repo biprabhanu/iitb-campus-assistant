@@ -2,18 +2,18 @@
 // Settings -> "Connectors" (local mode only): IITB Webmail, ASC and Google Calendar.
 //
 // Rules this file follows (docs/CONTRACT.md section 11):
-// - A password or one-time code is sent once. It is cleared from state the moment the request starts,
-//   and it is never put in localStorage, a URL or the console.
+// - A password is sent once. It is cleared from state the moment the request starts,
+//   and it is never put in localStorage, a URL or the console. (ASC has no one-time code step.)
 // - The server decides what is connected; this UI only shows the state it reports.
 // - Webmail and ASC are read-only. The only write in the whole app is the calendar event a student
 //   clicks "Add" on (see personal-cards.tsx).
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Calendar, ExternalLink, FlaskConical, GraduationCap, Loader2, Mail, ShieldCheck, Wifi, type LucideIcon } from "lucide-react";
+import { AlertCircle, Calendar, ExternalLink, FlaskConical, GraduationCap, Loader2, Mail, RefreshCw, ShieldCheck, Wifi, type LucideIcon } from "lucide-react";
 import { SecretInput } from "@/components/secret-input";
 import { Button } from "@/components/ui/button";
-import { ascLogin, ascLogout, ascOtp, CONNECTOR_FLAGS, gcalConnect, gcalDisconnect, webmailLogin, webmailLogout, type ApiResult } from "@/lib/api";
+import { ascLogin, ascLogout, CONNECTOR_FLAGS, gcalConnect, gcalDisconnect, refreshAsc, webmailLogin, webmailLogout, type ApiResult } from "@/lib/api";
 import type { ConnectorsState } from "@/hooks/use-connectors";
-import { cn, safeHttpUrl } from "@/lib/utils";
+import { cn, relativePast, safeHttpUrl } from "@/lib/utils";
 import type { ConnectorName, ConnectorState, ConnectorStatus } from "@/lib/types";
 
 interface Meta {
@@ -34,7 +34,7 @@ const META: Record<ConnectorName, Meta> = {
   asc: {
     title: "ASC",
     icon: GraduationCap,
-    blurb: "Read-only. Shows your timetable, registered courses and grades. Nothing is registered or changed for you.",
+    blurb: "Read-only. Shows your timetable, courses, registration, profile and fee status. Grades are never read. Nothing is registered or changed for you.",
     campusOnly: true,
   },
   gcal: {
@@ -75,12 +75,10 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
   const Icon = meta.icon;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState<null | "login" | "otp" | "disconnect" | "google">(null);
+  const [busy, setBusy] = useState<null | "login" | "disconnect" | "google" | "refresh">(null);
   const [error, setError] = useState<string | null>(null);
   const [announce, setAnnounce] = useState(""); // read out by screen readers (visually hidden)
   const [confirming, setConfirming] = useState(false);
-  const [otpCancelled, setOtpCancelled] = useState(false);
   const [formOpen, setFormOpen] = useState(false); // the username / password form stays folded until "Connect" is pressed
   const [google, setGoogle] = useState<{ url: string; blocked: boolean } | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -98,10 +96,9 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
   useEffect(() => () => abortGoogle.current?.abort(), []);
 
   const state = status.state;
-  const showOtp = state === "needs_otp" && !!status.challenge_id && !otpCancelled;
   const isGoogle = name === "gcal";
   const isWebmail = name === "webmail";
-  const canLogin = !isGoogle && !showOtp && (state === "not_connected" || state === "error" || state === "needs_otp");
+  const canLogin = !isGoogle && (state === "not_connected" || state === "error" || state === "needs_otp");
 
   function done(next: ConnectorStatus, text: string) {
     setFormOpen(false);
@@ -118,44 +115,28 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
     setPassword(""); // the password lives in state only until this request starts
     setBusy("login");
     setError(null);
-    setOtpCancelled(false);
     const res: ApiResult<ConnectorStatus> = await (name === "asc" ? ascLogin : webmailLogin)({ username: user, password: pass });
     setBusy(null);
     if (!res.ok) return setError(res.message);
     if (res.data.state === "connected") {
       setUsername("");
       done(res.data, `${meta.title} connected.`);
-    } else if (res.data.state === "needs_otp") {
-      onChange(res.data);
-      setAnnounce(`${meta.title} needs a one-time code.`);
     } else {
       onChange(res.data);
       setError(res.data.message || "Couldn't connect. Please try again.");
     }
   }
 
-  async function submitOtp(e: React.FormEvent) {
-    e.preventDefault();
-    const value = code.trim();
-    if (busy || !status.challenge_id) return;
-    if (!/^[0-9A-Za-z]{4,12}$/.test(value)) return setError("Enter the code exactly as ASC sent it (4 to 12 letters or digits).");
-    setCode("");
-    setBusy("otp");
+  /** ASC only: read the personal pages again now. The server answers with the new `refreshed_at`. */
+  async function refresh() {
+    if (busy) return;
+    setBusy("refresh");
     setError(null);
-    const res = await ascOtp({ challenge_id: status.challenge_id, code: value });
+    const res = await refreshAsc();
     setBusy(null);
-    if (!res.ok) {
-      // An expired login can't take a code any more: go back to the password form.
-      if (res.code === "SESSION_EXPIRED" || res.code === "OTP_REQUIRED") setOtpCancelled(true);
-      return setError(res.message);
-    }
-    if (res.data.state === "connected") {
-      setUsername("");
-      done(res.data, "ASC connected.");
-    } else {
-      onChange(res.data);
-      if (res.data.state === "error") setError(res.data.message || "Couldn't connect. Please try again.");
-    }
+    if (!res.ok) return setError(res.message);
+    onChange(res.data);
+    setAnnounce("ASC data updated.");
   }
 
   async function disconnect() {
@@ -255,6 +236,24 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
         </div>
       )}
 
+      {/* ASC: read the personal pages again on demand (the snapshot is also refreshed every 6 hours). */}
+      {state === "connected" && name === "asc" && (
+        <div className="mt-3 border-t pt-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Button variant="outline" size="sm" onClick={refresh} disabled={busy !== null}>
+              {busy === "refresh" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+              {busy === "refresh" ? "Refreshing…" : "Refresh ASC data"}
+            </Button>
+            {relativePast(status.refreshed_at) && (
+              <span data-testid="asc-updated" className="text-xs text-muted-foreground">
+                Updated {relativePast(status.refreshed_at)}
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">Your ASC data is only shared with the local model.</p>
+        </div>
+      )}
+
       {state === "error" && status.message && (
         <p className="mt-3 flex items-start gap-2 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {status.message}
@@ -274,7 +273,7 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
       {canLogin && formOpen && (
         <form onSubmit={login} className="mt-3 space-y-3" aria-label={`${meta.title} login`}>
           <div>
-            <label htmlFor={`${name}-user`} className="mb-1.5 block text-sm font-medium">{isWebmail ? "LDAP ID" : "IITB LDAP username"}</label>
+            <label htmlFor={`${name}-user`} className="mb-1.5 block text-sm font-medium">LDAP ID</label>
             <input
               id={`${name}-user`}
               type="text"
@@ -285,7 +284,7 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
               autoFocus
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={isWebmail ? "your LDAP id, e.g. 24b0000" : undefined}
+              placeholder="your LDAP id, e.g. 24b0000"
               className={INPUT}
             />
           </div>
@@ -303,7 +302,7 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
               </p>
             </div>
           ) : (
-            <SecretInput id={`${name}-password`} label="IITB LDAP password" noun="password" value={password} onChange={setPassword} />
+            <SecretInput id={`${name}-password`} label="LDAP password" noun="password" value={password} onChange={setPassword} />
           )}
           <div className="flex flex-wrap gap-2">
             <Button type="submit" variant="primary" disabled={!username.trim() || !password || busy !== null}>
@@ -327,40 +326,6 @@ function ConnectorCard({ name, status, onChange }: { name: ConnectorName; status
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
             <span>Sent once to your local CampusPilot server and stored in your Mac&apos;s Keychain. Never sent anywhere else.</span>
           </p>
-        </form>
-      )}
-
-      {/* ASC only: the one-time code step. */}
-      {showOtp && (
-        <form onSubmit={submitOtp} className="mt-3 space-y-3" aria-label="ASC verification step">
-          <div>
-            <label htmlFor="asc-otp" className="mb-1.5 block text-sm font-medium">One-time code</label>
-            <input
-              id="asc-otp"
-              type="text"
-              inputMode="text"
-              autoComplete="one-time-code"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-              maxLength={12}
-              autoFocus
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              aria-describedby="asc-otp-hint"
-              className={cn(INPUT, "font-mono tracking-widest")}
-            />
-            <p id="asc-otp-hint" className="mt-1.5 text-xs text-muted-foreground">{status.message || "Enter the code ASC sent you."}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" variant="primary" disabled={!code.trim() || busy !== null}>
-              {busy === "otp" && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-              {busy === "otp" ? "Checking…" : "Submit code"}
-            </Button>
-            <Button variant="ghost" disabled={busy !== null} onClick={() => { setOtpCancelled(true); setError(null); setCode(""); }}>
-              Cancel
-            </Button>
-          </div>
         </form>
       )}
 

@@ -1,7 +1,8 @@
 // Built-in fake for the v2 connector endpoints (used with NEXT_PUBLIC_MOCK=true, see lib/api.ts).
 // State lives in this module's memory only, so a page reload starts again from ?mockConnectors=...
-// Nothing here is a real account: logins "work" unless the password contains "bad", and the
-// ASC one-time code "000000" is rejected (so both error paths can be tried by hand).
+// Nothing here is a real account: logins "work" unless the password contains "bad" (so the error
+// path can be tried by hand). ASC has no one-time code. "Refresh ASC data" works unless the
+// ASC account is "stale", which makes it fail once with a friendly message.
 import { mockConnectors } from "./config";
 import type { ApiResult } from "./api";
 import type {
@@ -9,7 +10,6 @@ import type {
   CalendarEventResult,
   ConnectorLoginRequest,
   ConnectorName,
-  ConnectorOtpRequest,
   ConnectorsResponse,
   ConnectorStatus,
   GcalConnectStart,
@@ -26,7 +26,10 @@ function initial(): ConnectorsResponse {
   const mode = mockConnectors();
   const mk = (name: ConnectorName, account: string): ConnectorStatus => {
     if (mode === "off") return { name, enabled: false, state: "disabled", message: `Off. Set ${FLAGS[name]}=true in .env and restart the API.` };
-    if (mode === "connected" || mode === "demo") return { name, enabled: true, state: "connected", account, demo: mode === "demo" };
+    if (mode === "connected" || mode === "demo") {
+      // ASC remembers when its snapshot was read (20 minutes ago, so "Updated 20 minutes ago" shows).
+      return { name, enabled: true, state: "connected", account, demo: mode === "demo", ...(name === "asc" ? { refreshed_at: new Date(Date.now() - 20 * 60_000).toISOString() } : {}) };
+    }
     return { name, enabled: true, state: "not_connected" };
   };
   return { webmail: mk("webmail", "demo.student"), asc: mk("asc", "demo.student"), gcal: mk("gcal", "demo.student@example.com") };
@@ -47,7 +50,7 @@ function set(name: ConnectorName, status: ConnectorStatus): ConnectorStatus {
   return status;
 }
 
-const fail = (code: "AUTH_FAILED" | "NOT_AVAILABLE", message: string, status = 401): ApiResult<never> => ({ ok: false, code, message, status });
+const fail = (code: "AUTH_FAILED" | "NOT_AVAILABLE" | "NOT_CONNECTED", message: string, status = 401): ApiResult<never> => ({ ok: false, code, message, status });
 
 export async function mockGetConnectors(): Promise<ApiResult<ConnectorsResponse>> {
   await sleep(150);
@@ -60,16 +63,15 @@ export async function mockLogin(name: "webmail" | "asc", req: ConnectorLoginRequ
   if (/bad/i.test(req.password)) {
     return fail("AUTH_FAILED", name === "webmail" ? "That LDAP ID or SSO access token was not accepted. Check the token (not your LDAP password) and try again." : "That username or password was not accepted. Check it and try again.");
   }
-  if (name === "asc") {
-    return { ok: true, data: set(name, { name, enabled: true, state: "needs_otp", account: req.username, challenge_id: "mock-challenge", message: "Enter the one-time code ASC just sent you." }) };
-  }
-  return { ok: true, data: set(name, { name, enabled: true, state: "connected", account: req.username }) };
+  return { ok: true, data: set(name, { name, enabled: true, state: "connected", account: req.username, ...(name === "asc" ? { refreshed_at: new Date().toISOString() } : {}) }) };
 }
 
-export async function mockOtp(req: ConnectorOtpRequest): Promise<ApiResult<ConnectorStatus>> {
-  await sleep(500);
-  if (req.code === "000000") return fail("AUTH_FAILED", "That code didn't work. Check it and try again.");
-  return { ok: true, data: set("asc", { name: "asc", enabled: true, state: "connected", account: current().asc.account ?? "demo.student" }) };
+/** "Refresh ASC data": the snapshot is read again, so `refreshed_at` becomes now. */
+export async function mockRefreshAsc(): Promise<ApiResult<ConnectorStatus>> {
+  await sleep(700);
+  const asc = current().asc;
+  if (asc.state !== "connected") return fail("NOT_CONNECTED", "ASC isn't connected. Connect it in Settings first.", 409);
+  return { ok: true, data: set("asc", { ...asc, refreshed_at: new Date().toISOString() }) };
 }
 
 export async function mockLogout(name: ConnectorName): Promise<ApiResult<ConnectorStatus>> {
