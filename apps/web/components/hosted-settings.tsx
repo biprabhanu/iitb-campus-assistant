@@ -1,9 +1,11 @@
 "use client";
-// Settings body for hosted mode: (1) the model key, (2) optional Moodle, then "Forget everything".
+// Settings body for hosted mode. Same layout as the local Settings: AI key, Moodle, Connectors (a guide
+// only), Model status, then the data kept in this browser with "Forget everything".
 import { useState } from "react";
 import { ShieldCheck, Trash2 } from "lucide-react";
 import { KeyGuide, ProviderNote, ProviderSelect, TestButton, TestResult, type TestOutcome } from "@/components/key-fields";
 import { llmOutcome } from "@/components/key-card";
+import { HostedConnectorsGuide } from "@/components/hosted-connectors-guide";
 import { SecretInput } from "@/components/secret-input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -71,10 +73,11 @@ function ModelSection({ creds, providers }: { creds: Credentials; providers: Pro
   }
 
   return (
-    <section aria-labelledby="hs-model-h" className="space-y-4">
+    <section aria-labelledby="hs-model-h">
       <SectionHeading id="hs-model-h" note="CampusPilot answers with your own AI key. Groq is free and recommended.">
-        1. Model key
+        AI key
       </SectionHeading>
+      <div className="mt-3 space-y-4">
       <ProviderSelect id="hs-provider" value={provider} onChange={(v) => (setProvider(v), touch())} providers={providers} />
       <ProviderNote provider={chosen} />
       <SecretInput
@@ -140,6 +143,7 @@ function ModelSection({ creds, providers }: { creds: Credentials; providers: Pro
           </Button>
         )}
       </div>
+      </div>
     </section>
   );
 }
@@ -179,10 +183,11 @@ function MoodleSection({ creds }: { creds: Credentials }) {
   }
 
   return (
-    <section aria-labelledby="hs-moodle-h" className="space-y-4">
-      <SectionHeading id="hs-moodle-h" note="Optional. Paste your Moodle calendar link (Moodle → Calendar → Export calendar → Get calendar URL) to see your real deadlines. Without it you see demo data. The link works like a password.">
-        2. Moodle
+    <section aria-labelledby="hs-moodle-h">
+      <SectionHeading id="hs-moodle-h" note="Optional. Paste your Moodle calendar link. In Moodle: Calendar → Export calendar → All events, Recent and next 60 days → Get calendar URL. Without it you see demo data. The link works like a password.">
+        Moodle
       </SectionHeading>
+      <div className="mt-3 space-y-4">
       <SecretInput
         id="hs-moodle"
         noun="value"
@@ -215,7 +220,19 @@ function MoodleSection({ creds }: { creds: Credentials }) {
           </Button>
         )}
       </div>
+      </div>
     </section>
+  );
+}
+
+function Row({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" | "warn" }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-2 text-sm">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={cn("truncate text-right font-medium", tone === "good" && "text-success", tone === "bad" && "text-danger", tone === "warn" && "text-warning")}>
+        {value}
+      </dd>
+    </div>
   );
 }
 
@@ -232,15 +249,28 @@ export function HostedSettings({
 }) {
   const [confirm, setConfirm] = useState(false);
   const { status, reachable } = state;
+  const providerLabel = creds.llm ? (providers.find((p) => p.id === creds.llm?.provider)?.label ?? creds.llm.provider) : null;
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       <ModelSection creds={creds} providers={providers} />
-      <hr />
       <MoodleSection creds={creds} />
-      <hr />
+      {/* Instructions only: no connector request is made and no connector login is asked for in hosted mode. */}
+      <HostedConnectorsGuide />
+
+      <section aria-labelledby="hs-status-h">
+        <h3 id="hs-status-h" className="text-sm font-semibold">Model status</h3>
+        <dl className="mt-1 divide-y">
+          <Row label="Server" value={reachable ? "Reachable" : "Unreachable"} tone={reachable ? "good" : "bad"} />
+          <Row label="AI provider" value={providerLabel ? `${providerLabel} (your key)` : "No key saved"} tone={providerLabel ? "good" : "warn"} />
+          <Row label="Moodle" value={creds.moodle ? `Saved in this browser (${creds.moodle.token ? "token" : "calendar link"})` : "Not connected (showing demo data)"} tone={creds.moodle ? "good" : "warn"} />
+          <Row label="Sources indexed" value={status ? String(status.sources_indexed) : "Unknown"} />
+          {status?.index_version && <Row label="Index version" value={status.index_version} />}
+        </dl>
+      </section>
+
       <section aria-labelledby="hs-data-h">
         <SectionHeading id="hs-data-h" note="Your keys and your chats live only in this browser. Forgetting clears keys, Moodle credentials and chat history.">
-          Your data
+          Local data
         </SectionHeading>
         {confirm ? (
           <div role="alertdialog" aria-label="Confirm forgetting everything" className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-danger/30 bg-danger-soft px-3 py-2.5">
@@ -253,11 +283,6 @@ export function HostedSettings({
             <Trash2 className="h-3.5 w-3.5" aria-hidden /> Forget everything
           </Button>
         )}
-        <dl className="mt-4 divide-y text-sm">
-          <div className="flex justify-between gap-4 py-2"><dt className="text-muted-foreground">Server</dt><dd className={cn("font-medium", reachable ? "text-success" : "text-danger")}>{reachable ? "Reachable" : "Unreachable"}</dd></div>
-          <div className="flex justify-between gap-4 py-2"><dt className="text-muted-foreground">Sources indexed</dt><dd className="font-medium">{status ? status.sources_indexed : "Unknown"}</dd></div>
-          {status?.index_version && <div className="flex justify-between gap-4 py-2"><dt className="text-muted-foreground">Index version</dt><dd className="truncate font-medium">{status.index_version}</dd></div>}
-        </dl>
       </section>
     </div>
   );

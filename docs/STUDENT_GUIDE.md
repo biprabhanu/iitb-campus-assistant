@@ -28,6 +28,22 @@ The link contains a private key, so treat it like a password: don't share it or 
 
 If your Moodle cannot be reached from the hosted version, CampusPilot says so. The local app can still do it.
 
+## Connectors (local app only)
+
+Webmail, ASC and Google Calendar work only in the local app on your own computer. The hosted site never stores your mail, ASC or Google logins, so in Settings it shows these three as "Local app only" with a **How to connect** guide. Moodle works on the hosted site: paste your calendar link as above.
+
+To get the local app:
+
+1. Run `git clone https://github.com/biprabhanu/iitb-campus-assistant`, then `make setup` inside the folder.
+2. In the `.env` file set the connector you want to `true`: `WEBMAIL_ENABLED=true`, `ASC_ENABLED=true` or `GCAL_ENABLED=true`.
+3. Run `make dev`, open http://127.0.0.1:3000 and go to Settings, then Connectors.
+
+Then, for each connector:
+
+- **Webmail:** you need your IITB LDAP ID and an access token for Emails, not your LDAP password. Make the token at sso.iitb.ac.in: Manage account, Access tokens, Emails. It is saved in the macOS Keychain. CampusPilot only reads your mail; it never sends, moves or deletes anything.
+- **ASC:** you need your LDAP ID and LDAP password, and you must be on the campus network or the IITB VPN. CampusPilot reads your timetable, courses, registration, profile and fee status. It never reads grades. Questions about your ASC data are answered only by the local model.
+- **Google Calendar:** in the Google Cloud Console create an OAuth client of type "Desktop app" and save the downloaded file as `~/.campuspilot/google_client.json`. Then press **Connect Google Calendar**. An event is added only when you click **Add** on an event card, and never twice.
+
 ## What is stored, and what is sent
 
 | | Where it goes |
