@@ -15,6 +15,7 @@ flowchart LR
   D --> S[("SQLite FTS5<br/>data/campuspilot.db")]
   T --> M["list_my_courses<br/>get_my_deadlines<br/>get_course_contents"]
   M --> MO["Moodle REST, iCal<br/>or demo fixtures"]
+  T -.->|"local mode only"| X["mail/ (IMAP), asc/, gcal/<br/>personal connectors"]
   O -->|"chat completions"| L["Ollama on the course server<br/>reached via SSH tunnel<br/>127.0.0.1:11500"]
 ```
 
@@ -25,6 +26,7 @@ flowchart LR
 | Orchestrator | `agent/orchestrator.py`, `agent/prompts.py` | Runs the model loop, executes tools, builds evidence, filters the answer. |
 | Retrieval | `retrieval/tools.py` | `search_campus_docs` (BM25 over FTS5) and `get_official_link` (registry lookup). |
 | Moodle | `moodle/` | Read-only REST and iCal clients, Keychain storage, demo fixtures, 5-minute in-memory cache. |
+| Connectors (local only) | `mail/`, `asc/`, `gcal/` | Webmail over IMAP (LDAP id + SSO access token, read-only, `BODY.PEEK`), ASC (plain LDAP form, in-memory snapshot, allowlisted pages, grades never read), Google Calendar (primary calendar, an event is created only when the student clicks Add, deduplicated). Not mounted in hosted mode. Secrets live in the macOS Keychain. See CONTRACT §11. |
 | Model client | `llm/` | Ollama client, scripted mock model (`CAMPUSPILOT_MOCK_LLM=true`), optional cloud fallback (off by default). |
 | Ingestion | `ingestion/`, `scripts/ingest.py` | Registry, polite fetcher, parsing, chunking, SQLite writes. |
 
@@ -54,6 +56,7 @@ Each request writes one log line: request ID, model, mode, tools, chunk IDs, lat
 - **Abstain.** When the evidence does not answer the question, the model replies with the `ABSTAIN:` prefix. The backend sends the answer with `answer_kind="abstain"` and attaches up to three official links from `get_official_link`. It never invents a URL: links come from the registry.
 - **Clarify.** `ask_clarification` (at most 300 characters and 4 options) ends the tool loop. The question is streamed, and `follow_up` carries the options. Nothing runs after it.
 - **Personal data stays local.** In `fallback` mode with `ALLOW_PERSONAL_DATA_TO_CLOUD=false` (the default), Moodle tools are not offered to the model at all.
+- **Personal connectors are local only and model-gated.** Mail text is read only by the local Gemma. The student's own ASC data is offered only when the chat model is local (`llm.mode` is `live` or `mock`; `agent/orchestrator.py`, `agent/asc_intent.py`). With a cloud model (`byok`, `fallback`) only the public ASC tools are offered, and personal ASC questions get a fixed refusal line. The model sees a count, not the data; the cards go straight to the UI. Grades are never read. Moodle content never reaches any LLM.
 - **Tier rule for sources.** Official office pages (tier 1) rank above student-body pages (tier 2). Conflicts are shown, not silently resolved. See [SOURCES.md](SOURCES.md).
 
 ## Data pipeline

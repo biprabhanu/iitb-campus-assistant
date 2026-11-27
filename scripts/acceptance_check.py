@@ -7,6 +7,11 @@ Questions are sent one at a time (the GPU is shared). For each one we record whe
 behaviour matched, whether an expected source was cited, time to first token, total latency
 and any error code. Results go to data/eval/results-<date>.json (gitignored) and a markdown
 summary is printed. It talks to the network, so no pytest test imports it.
+
+Hosted mode: pass --api-url https://<render-host>. The script then sends the bring-your-own-key
+headers (X-LLM-Provider and X-LLM-Key from TEST_LLM_PROVIDER / TEST_LLM_KEY in .env, read here and
+never printed) plus an Origin header, paces the questions to respect free-tier token limits and
+retries once after a rate-limit response.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sqlite3
 import statistics
 import sys
@@ -27,6 +33,31 @@ ROOT = Path(__file__).resolve().parents[1]
 QUESTIONS = ROOT / "data" / "eval" / "questions.jsonl"
 REGISTRY = ROOT / "data" / "sources" / "registry.csv"
 DB = ROOT / "data" / "campuspilot.db"
+
+
+HOSTED_ORIGIN = "https://iitb-campus-assistant.vercel.app"
+PACE_SECONDS = 20.0  # free Groq allows about 8k tokens per minute
+RETRY_WAIT_SECONDS = 65.0
+
+
+def read_env_file(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
+def hosted_headers() -> dict[str, str]:
+    env = read_env_file(ROOT / ".env")
+    provider = os.environ.get("TEST_LLM_PROVIDER") or env.get("TEST_LLM_PROVIDER")
+    key = os.environ.get("TEST_LLM_KEY") or env.get("TEST_LLM_KEY")
+    if not provider or not key:
+        print("TEST_LLM_PROVIDER and TEST_LLM_KEY must be set in .env.", file=sys.stderr)
+        raise SystemExit(2)
+    return {"X-LLM-Provider": provider, "X-LLM-Key": key, "Origin": HOSTED_ORIGIN}
 
 
 def load_questions(limit: int | None) -> list[dict]:
@@ -64,6 +95,15 @@ def read_sse(response: httpx.Response, started: float):
         elif line.startswith("data: ") and name:
             yield name, json.loads(line.removeprefix("data: ")), time.monotonic() - started
             name = None
+
+
+def ask_with_retry(client: httpx.Client, api: str, question: str, hosted: bool) -> dict:
+    run = ask(client, api, question)
+    if hosted and run["error"] in ("HTTP_429", "RATE_LIMITED"):
+        print("rate limited, waiting before one retry...", file=sys.stderr)
+        time.sleep(RETRY_WAIT_SECONDS)
+        run = ask(client, api, question)
+    return run
 
 
 def ask(client: httpx.Client, api: str, question: str) -> dict:
@@ -175,23 +215,29 @@ def print_report(rows: list[dict], totals: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--api", default="http://127.0.0.1:8000", help="API base URL")
+    parser.add_argument("--api", "--api-url", dest="api", default="http://127.0.0.1:8000", help="API base URL")
     parser.add_argument("--limit", type=int, default=None, help="only the first N questions")
     args = parser.parse_args()
     api = args.api.rstrip("/")
 
+    hosted = not api.startswith(("http://127.0.0.1", "http://localhost"))
+    headers = hosted_headers() if hosted else {}
     questions = load_questions(args.limit)
     mapper = SourceMapper()
     rows = []
-    with httpx.Client(timeout=httpx.Timeout(180.0, connect=5.0)) as client:
+    with httpx.Client(timeout=httpx.Timeout(180.0, connect=15.0), headers=headers) as client:
         try:
-            client.get(f"{api}/health").raise_for_status()
+            # /v1/ping wakes a sleeping Render instance (can take about a minute).
+            client.get(f"{api}/v1/ping", timeout=120.0).raise_for_status()
         except httpx.HTTPError:
             print(f"The API is not reachable at {api}. Start it first.", file=sys.stderr)
             return 1
-        for item in questions:
+        for i, item in enumerate(questions):
+            if hosted and i:
+                time.sleep(PACE_SECONDS)
             print(f"asking {item['id']}...", file=sys.stderr)
-            rows.append(judge(item, ask(client, api, item["question"]), mapper))
+            run = ask_with_retry(client, api, item["question"], hosted)
+            rows.append(judge(item, run, mapper))
 
     totals = summarise(rows)
     out_path = ROOT / "data" / "eval" / f"results-{date.today().isoformat()}.json"

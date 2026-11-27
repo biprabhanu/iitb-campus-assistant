@@ -40,8 +40,8 @@ To get the local app:
 
 Then, for each connector:
 
-- **Webmail:** you need your IITB LDAP ID and an access token for Emails, not your LDAP password. Make the token at sso.iitb.ac.in: Manage account, Access tokens, Emails. It is saved in the macOS Keychain. CampusPilot only reads your mail; it never sends, moves or deletes anything.
-- **ASC:** you need your LDAP ID and LDAP password, and you must be on the campus network or the IITB VPN. CampusPilot reads your timetable, courses, registration, profile and fee status. It never reads grades. Questions about your ASC data are answered only by the local model.
+- **Webmail:** you need your IITB LDAP ID and an access token for Emails, not your LDAP password. Make the token at sso.iitb.ac.in: Manage account, Access tokens, Emails. It is saved in the macOS Keychain. CampusPilot only reads your mail (read-only, and it never marks mail as read); it never sends, moves or deletes anything. Mail is read only by the local model.
+- **ASC:** you need your LDAP ID and LDAP password, and you must be on the campus network or the IITB VPN. ASC is a plain LDAP form (no OTP). CampusPilot reads your timetable, courses, registration and profile, and shows the "Scholarship month view (ASC)" (the ASC fees page has a month picker only, so there is no fee table; check dues on ASC). Your profile includes your academic standing. It never reads grades. Your own ASC data is shown only when the local Gemma model is selected; with a cloud model, CampusPilot refuses those questions and tells you to switch to Local Gemma. Public ASC data (running courses, offering history, course details) works with any model.
 - **Google Calendar:** in the Google Cloud Console create an OAuth client of type "Desktop app" and save the downloaded file as `~/.campuspilot/google_client.json`. Then press **Connect Google Calendar**. An event is added only when you click **Add** on an event card, and never twice.
 
 ## What is stored, and what is sent

@@ -305,10 +305,12 @@ and the schemas disagree, the schemas win.
 - Flags `WEBMAIL_ENABLED`, `ASC_ENABLED`, `GCAL_ENABLED` default to `false`. `CONNECTORS_DEMO=true`
   serves labelled fixture data (`demo: true`) instead of a live account.
 - Webmail is read over **IMAP with SSL**: `imap.iitb.ac.in:993`, checked live (no login) on 27 Nov 2026. It is a perdition proxy that speaks **only TLS 1.2 with RSA key-exchange AES-GCM ciphers**, so the client uses `imap_ssl_context()` (certificate and hostname checks on, those ciphers added after the modern ones). Login = the **LDAP id** (a typed `@iitb.ac.in` suffix is dropped) plus an **IITB SSO access token for Emails** (sso.iitb.ac.in → Manage account → Access tokens → Emails); the LDAP password is rejected. The token is stored in the Keychain entry `webmail_password`; the API field stays `password`. Webmail is Roundcube, so mail cards link to `https://webmail.iitb.ac.in/?_task=mail&_mbox=<folder>&_uid=<uid>&_action=show` (UID match to confirm live).
-- ASC is the **internal portal** (`ASC_BASE_URL`), with login through **IITB SSO (LDAP)**. If it
-  ever shows an OTP or CAPTCHA, the student completes it in the UI; nothing is bypassed.
+- ASC is the **internal portal** (`ASC_BASE_URL`), with a plain **LDAP id + password form** (no
+  SSO redirect and no OTP; see §11.8). Nothing is bypassed.
 - Mail text is read only by the **local Gemma** (`llm/personal.py`); a cloud model only with
-  `ALLOW_PERSONAL_DATA_TO_CLOUD=true`. ASC data and grades go to **no model at all**.
+  `ALLOW_PERSONAL_DATA_TO_CLOUD=true`. The student's own ASC data is offered only to the **local
+  model** (§11.8; the model sees a count, the cards go to the UI); a cloud model gets only the
+  public ASC tools and a refusal line. **Grades are never read at all.**
 - Calendar: **suggest, then the student confirms.** One click creates one event. Never a tool.
 
 ### 11.2 Ownership (Phase 1)
@@ -487,11 +489,12 @@ No OTP: `POST /v1/connectors/asc/otp` answers `otp_invalid`. Logout: `GET /acadm
 
 **Snapshot (personal data).** After login and on demand, CampusPilot reads every personal page into
 one `AscSnapshot` held **in memory only** (never on disk): profile, timetable, current courses,
-registration status, fee status, `fetched_at`. Refreshed when older than 6 h
+registration status, the scholarship month view, `fetched_at`. Refreshed when older than 6 h
 (`ASC_SNAPSHOT_TTL_S=21600`) or on `POST /v1/connectors/asc/refresh` (confirm header; returns
 `ConnectorStatus` with `refreshed_at`). One page failing keeps the others; that tool then raises.
 
-**Public course data** (running courses, offering history, details, prerequisites, syllabus) is
+**Public course data** (running courses, offering history, details, prerequisites, syllabus; `newallCourse.jsp` is only a
+department picker and is no longer fetched) is
 read per request and cached on disk for 24 h under `~/.campuspilot/cache/asc/`
 (`ASC_PUBLIC_CACHE_DIR`), department x year x semester. Not personal.
 
@@ -501,7 +504,7 @@ read per request and cached on disk for 24 h under `~/.campuspilot/cache/asc/`
 | `asc_my_timetable` | `AscMyTimetableInput{day?}` | `AscTimetableOutput` | `asc_slot` | yes | "Reading your ASC timetable" |
 | `asc_my_current_courses` | `AscCurrentCoursesInput{}` | `AscCoursesOutput` | `asc_course` | yes | "Reading your ASC courses" |
 | `asc_registration_status` | `AscRegistrationStatusInput{}` | `AscRegistrationOutput` | `asc_course` | yes | "Checking your ASC registration" |
-| `asc_fee_status` | `AscFeeStatusInput{}` | `AscFeeStatusOutput` | `asc_fee` | yes | "Checking your ASC fee status" |
+| `asc_fee_status` | `AscFeeStatusInput{}` | `AscFeeStatusOutput` | `asc_fee` | yes | "Scholarship month view (ASC)" |
 | `asc_offered_courses` | `AscOfferedCoursesInput{dept, year, semester}` | `AscOfferedCoursesOutput` | `asc_course` | no | "Reading ASC running courses" |
 | `asc_course_offering_history` | `AscCourseHistoryInput{course_code}` | `AscCourseHistoryOutput` | `asc_history` | no | "Checking when the course runs" |
 | `asc_course_details` | `AscCourseDetailsInput{course_code}` | `AscCourseDetailsOutput` | `asc_detail` | no | "Reading the course details on ASC" |
@@ -527,9 +530,10 @@ convo, withdraw, adjustment).
 
 **Allowlist** (`pages.path_allowed`): the login pages, `menu.jsp`, `VenueOccupancy.jsp`,
 `AcademicRecord.jsp`, `CRFFormInput.jsp` (GET only), `allDept.jsp`, `RunningCourses.jsp`,
-`crsedetail.jsp`, `newallCourse.jsp` (syllabus, listed by the owner), `Prereq`, `TTcheck.jsp`, and
-the fee status page. Until the fee page is mapped live, its page name is taken from the menu leaf
-labelled "Fees Status/Scholarship" at login (only if its label/URL hits no forbidden keyword) and
+`crsedetail.jsp` (course details; the syllabus is its "Description" row), `Prereq` (live table of
+rule strings such as "IE 611 OR EE 325"; prerequisite rows only, equivalents skipped), `TTcheck.jsp`, and
+the fees leaf, which only shows a scholarship-payment month picker (no fee table, so the tool
+says so and shows no fee rows). Its page name is taken from the menu leaf labelled "Fees Status/Scholarship" at login (only if its label/URL hits no forbidden keyword) and
 allowed for that session only; after live mapping it is pinned in `pages.FEE_PAGE`. POST only to
 `ldaplogin.jsp` and the GO forms of `allDept.jsp` / `RunningCourses.jsp`. One request at a time,
 `ASC_MIN_INTERVAL_S=1` apart, `ASC_TIMEOUT_S=15`. Session expiry (menu shows "Sign in", or a page
@@ -541,9 +545,9 @@ page text. httpx/httpcore records are dropped during ASC requests.
 **Errors:** unreachable = "ASC needs the campus network or IITB VPN."; `auth_failed` = "ASC rejected
 the LDAP id or password.".
 
-**Settings text (ASC card):** "...timetable, courses, registration, profile and fee status. Grades
+**Settings text (ASC card):** "...timetable, courses, registration, profile and the scholarship month view. Grades
 are never read." plus a "Refresh ASC data" button (shows `refreshed_at`).
 
 **`make asc-check`** (`scripts/asc_check.py`): uses the Keychain login, prints counts only:
-timetable slots, current courses, registration window open/closed + count, fee rows, profile
+timetable slots, current courses, registration window open/closed + count, scholarship month view (a note, no fee rows), profile
 fields filled, offered IE courses Autumn 2026.

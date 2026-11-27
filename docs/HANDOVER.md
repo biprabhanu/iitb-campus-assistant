@@ -44,12 +44,12 @@ than one Claude session pushes to `main`, so `git fetch` before you assume your 
 | 1 | Welcome/key card | implemented_and_tested (local) |
 | 2 | Streamed cited answer with the student's own key | implemented_and_tested on the live Render API (smoke test). A click-through in a browser on the Vercel UI is not yet recorded. |
 | 3 | 401 MODEL_KEY_REQUIRED and friendly provider errors | implemented_and_tested |
-| 4 | curl examples in `docs/API.md` | Written. Still uses `<RENDER_URL>`; fill it with the live URL. |
+| 4 | curl examples in `docs/API.md` | Written, with the live URL filled in. |
 | 5 | Moodle kept in the browser, never sent to an LLM | implemented_and_tested. Moodle from Render not yet checked. |
 | 6 | "Waking the server" UI | implemented_and_tested locally (container stop/start). Switched to `/v1/ping`. Not yet watched on a cold Render start. |
 | 7 | Fresh clone and CI | CI green. Fresh-clone test in a temp folder not run yet. |
 | 8 | Index built as a GitHub release, downloaded at startup | implemented_and_tested. Render loads `index-2026-11-26` (`index: release`). The release holds 44 documents and 337 chunks; `/v1/status` shows `sources_indexed: 9`. |
-| 9 | Acceptance check on the live site, numbers in `docs/EVAL.md` | Not done |
+| 9 | Acceptance check on the live site, numbers in `docs/EVAL.md` | Done 27 Nov 2026: 68% behaviour, 12% expected source cited, TTFT median 1.8 s. Source citation on hosted is weak (many uncited answers); see `docs/EVAL.md`. |
 | 10 | No secrets in Git or on the server | Sweep clean before every push so far. The final sweep, including Render logs with fake secrets, is not done. |
 
 ## Next steps, in order
@@ -67,9 +67,7 @@ The owner does every dashboard action. Give one step at a time and wait.
      `TEST_LLM_*`). Run it against the live API and append a "Hosted (Groq, own key)" section to
      `docs/EVAL.md`.
    - Measure questions per minute and per day on a free Groq key.
-   - Fill the placeholders: `<RENDER_URL>`, `<VERCEL_URL>`, "TBD after Phase 3" in `docs/API.md`
-     and `docs/DEPLOY.md`, and `<INDEX_TAG>`, `<INDEX_VERSION>`, `<DATE>`, `<PROVIDER>` and
-     `<MODEL_IDS>` in `docs/REPRODUCE.md`.
+   - (Done) placeholders in `docs/API.md`, `docs/DEPLOY.md` and `docs/REPRODUCE.md` are filled.
    - Add a README "Live pilot" section (link, bring your own free key, privacy in 3 bullets) and
      a "Reproduce" link.
    - Run `scripts/moodle_check.py --api-url <api>` with the owner's Moodle credentials from
@@ -109,13 +107,15 @@ The owner does every dashboard action. Give one step at a time and wait.
 
 ## v2 integrations: owner answers and what's still needed
 
-- ASC: the internal portal (campus or VPN), login through IITB SSO with LDAP. The login URL is not confirmed yet.
-- Webmail: IMAP over SSL. Host and port are not confirmed yet (placeholder `imap.iitb.ac.in:993`).
-- Mail is read only by the local Gemma. ASC data and grades go to no model.
+- ASC: the internal portal (campus or VPN), a plain LDAP id + password form (no SSO redirect, no OTP). Live and working (CONTRACT §11.8).
+- Webmail: IMAP over SSL at `imap.iitb.ac.in:993`; login is the LDAP id plus an SSO access token for Emails; read-only (`BODY.PEEK`).
+- Mail is read only by the local Gemma. Personal ASC data is offered only to the local Gemma (`local_model` routing in `agent/orchestrator.py` and `agent/asc_intent.py`); cloud models get only the public ASC tools plus a refusal line. Grades are never read.
+- ASC's fees leaf is a scholarship-payment month picker with no fee table, so the tool is labelled "Scholarship month view (ASC)", says there is no fee table and tells you to check dues on ASC. Syllabus comes from the `crsedetail.jsp` Description row (`newallCourse.jsp` is only a department picker); prerequisites come from the live Prereq table (rule strings such as "IE 611 OR EE 325").
+- Live checks 2026-11-27 (`make asc-check`): 14 timetable slots, 8 current courses, registration closed, 0 fee rows, 6/6 profile fields, offered IE Autumn 2026 = 0 (not published; Autumn 2025 = 34). Moodle: iCal link set, `make moodle-check` connected, 2 deadlines in 14 days. One live Google Calendar Add on the primary calendar created the event; the second click returned `already_exists`. Fresh clone: `make setup`, `make test` (578 pytest, 59 Playwright), `docker build` and `make mock-dev` all pass with no `.env`.
 - Google Calendar: before Phase 2 the owner creates a "Desktop app" OAuth client in their own Google account, saves it at
   `~/.campuspilot/google_client.json` (never in the repo, never pasted in chat), and creates a separate "CampusPilot test"
   calendar for live tests.
-- In Phase 2 the owner logs in to webmail, ASC and Google through the app UI. Claude never sees their passwords or OTPs.
+- In Phase 2 the owner logs in to webmail, ASC and Google through the app UI. Claude never sees their passwords or tokens.
 
 ## Owner's side tasks (not code)
 

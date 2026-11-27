@@ -1,6 +1,6 @@
 # CampusPilot API
 
-Base URL: `<RENDER_URL>` for the hosted pilot, `http://127.0.0.1:8000` locally. Request and response bodies are JSON. The full contract is `docs/CONTRACT.md`. This page covers hosted mode (`DEPLOY_MODE=hosted`); local differences are noted.
+Base URL: `https://campuspilot-api-mve5.onrender.com` for the hosted pilot, `http://127.0.0.1:8000` locally. Request and response bodies are JSON. The full contract is `docs/CONTRACT.md`. This page covers hosted mode (`DEPLOY_MODE=hosted`); local differences are noted.
 
 ## Endpoints
 
@@ -15,6 +15,8 @@ Base URL: `<RENDER_URL>` for the hosted pilot, `http://127.0.0.1:8000` locally. 
 | POST | `/v1/llm/check` | `X-LLM-Provider`, `X-LLM-Key`, optional `X-LLM-Model` | yes | One tiny model call. No body. Hosted only. |
 | POST | `/v1/moodle/check` | `X-Moodle-Token` or `X-Moodle-Ical-Url` | yes | Verifies Moodle access. Stores nothing. |
 | POST, DELETE | `/v1/moodle/token` | n/a | no | Hosted: always 404 `NOT_AVAILABLE`. Local only (Keychain). |
+
+The connector endpoints (`/v1/connectors/*` for Webmail, ASC and Google Calendar) exist only in local mode. In hosted mode the router is not mounted and `/v1/status` reports `connectors: []`. They are documented in `docs/CONTRACT.md` §11.
 
 ### GET /v1/status
 
@@ -138,7 +140,7 @@ JSON errors have the shape `{"code": "...", "message": "..."}`, plus `retry_afte
 - Per client IP: **20 requests per minute and 400 per day**, on `/v1/chat`, `/v1/llm/check`, `/v1/moodle/check` and `/v1/knowledge/search`. Over the limit: 429 `RATE_LIMITED` with `retry_after_s`. Counted in memory; reset on restart.
 - Hosted client IP: `CF-Connecting-IP`, else the last `X-Forwarded-For` entry, else the socket peer.
 - Body limit: 8 KB hosted, 32 KB local. Message 2000 chars, history turn 8000 chars.
-- Your model provider has its own limits (see `docs/DEPLOY.md`). Questions per minute on a free Groq key: TBD after Phase 3.
+- Your model provider has its own limits (see `docs/DEPLOY.md`). Pace measured in the hosted acceptance run: see `docs/EVAL.md` (Hosted section).
 
 ## CORS
 
@@ -150,7 +152,7 @@ Set your own key in the environment first. Never paste it into files you commit.
 
 ```bash
 export GROQ_API_KEY=...   # your own key from https://console.groq.com/keys
-export API=<RENDER_URL>
+export API=https://campuspilot-api-mve5.onrender.com
 ```
 
 No key: 401.

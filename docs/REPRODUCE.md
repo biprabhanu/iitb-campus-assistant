@@ -79,11 +79,11 @@ Verify a release (needs the GitHub CLI):
 
 ```bash
 mkdir index-check && cd index-check
-gh release download <INDEX_TAG> --repo biprabhanu/iitb-campus-assistant
+gh release download index-2026-11-26 --repo biprabhanu/iitb-campus-assistant
 sha256sum -c SHA256SUMS      # macOS: shasum -a 256 -c SHA256SUMS
 ```
 
-Both lines should end in `OK`. `<INDEX_TAG>` is TBD (for example `index-YYYY-MM-DD`; see the Releases page).
+Both lines should end in `OK`. `index-2026-11-26` is the tag the live Render service uses (pinned as `INDEX_TAG` in `render.yaml`); newer tags are on the Releases page.
 
 Page content changes over time, so an index built on another day can differ.
 
@@ -99,9 +99,13 @@ make acceptance
 
 It asks every question in `data/eval/questions.jsonl` and writes `data/eval/results-<date>.json` (not tracked).
 
-Hosted run: command TBD in Phase 4.
+Hosted run (needs `TEST_LLM_PROVIDER` and `TEST_LLM_KEY` in `.env`; the script reads them itself and never prints them; it paces itself for free-tier limits and takes about 15 minutes):
+
+```bash
+python scripts/acceptance_check.py --api-url https://campuspilot-api-mve5.onrender.com
+```
 
 | Run | Provider | Model | Index version | Date | Result |
 |---|---|---|---|---|---|
-| Local | Ollama (Passpoli) | `gemma4:26b-a4b-it-q4_K_M` (default in `.env.example`) | `<INDEX_VERSION>` | `<DATE>` | see `docs/EVAL.md` |
-| Hosted | `<PROVIDER>` | `<MODEL_IDS>` | `<INDEX_VERSION>` | `<DATE>` | TBD after Phase 4 |
+| Local | Ollama (Passpoli) | `gemma4:26b-a4b-it-q4_K_M` (default in `.env.example`) | local build (`make ingest`), 9 sources, 44 documents | 26 Nov 2026 | see `docs/EVAL.md` |
+| Hosted | Groq | router `openai/gpt-oss-20b`, answer `openai/gpt-oss-120b` | `index-2026-11-26` | 27 Nov 2026 | see `docs/EVAL.md` (Hosted section) |

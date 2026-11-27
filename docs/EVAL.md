@@ -83,3 +83,52 @@ next step for evaluation.
 
 Earlier live checks during integration (same day) measured time to first token at 11–20 s
 before the final answer was truly streamed, and 2.3–4.8 s after (see `docs/BUILD_LOG.md`).
+
+
+## Hosted (Groq, own key)
+
+> Same caveats as above: a small single-user check, not a benchmark. This is the first hosted run
+> and it was **not tuned**; the prompts and index were tuned against local Gemma.
+
+- **Date:** 27 Nov 2026
+- **API:** the live Render service (`https://campuspilot-api-mve5.onrender.com`), called with the
+  bring-your-own-key headers and the Vercel origin
+- **Provider and models:** Groq. Router `openai/gpt-oss-20b`, answer `openai/gpt-oss-120b`
+  (defaults in `apps/api/campuspilot/llm/providers.py`), with the owner's free test key
+- **Index:** release `index-2026-11-26` (`index: release`, 9 sources indexed)
+- **Moodle:** demo mode (none configured on the server)
+- **Command:** `python scripts/acceptance_check.py --api-url <api>` (questions sent 20 s apart,
+  one retry after 65 s on a rate-limit response; no retry was needed)
+- **Raw results:** `data/eval/results-2026-11-27.json` (gitignored)
+
+| Metric | Hosted (Groq) | Local (Gemma) |
+|---|---|---|
+| Questions | 25 | 25 |
+| Errors | 0 | 0 |
+| Behaviour match | **68%** (17/25) | 96% (24/25) |
+| Expected source cited | **12%** (2/16) | 75% (12/16) |
+| Time to first token | median 1.8 s, p90 2.4 s | median 6.2 s, p90 9.2 s |
+| Total latency | median 1.9 s, p90 2.5 s | median 9.8 s, p90 17.3 s |
+
+What the misses were (from the per-question results):
+
+- Of the 16 "answer" questions, four (q04, q06, q07, q12) were abstained and two (q09, q10) got a
+  clarifying question. Two Moodle questions (q18, q19) got a clarifying question instead of
+  deadline cards.
+- Of the 16 questions that expect a source, only q02 and q08 cited an expected source. Many
+  hosted answers came back as `answer` with **no citation at all** (for example q01, q03, q05), so
+  the low source-cited number reflects uncited answers, not only wrong sources. We did not
+  investigate the cause in this run; the likely areas are the hosted router model's tool use and
+  the prompts, which were tuned for Gemma. Treat it as the first thing to look at next.
+- The citation check maps cited URLs to registry ids using the local index and the registry, so
+  it may under-count if the release index holds URLs the local copy does not. We did not verify
+  this.
+- Latency is much lower than local because the cloud models are faster than Gemma on the shared
+  server. These are single-user timings with pauses between questions; they say nothing about
+  load.
+
+Free Groq pace: with 20 s between questions the run finished 25 questions with no rate-limit
+response. We did not run a separate stress test, so a questions-per-minute limit was not measured.
+The provider's documented free limit (about 1,000 requests per day and 8,000 tokens per minute
+per model) and the hosted server's own limit (20 requests per minute and 400 per day per IP)
+still apply.
